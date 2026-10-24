@@ -117,7 +117,7 @@
 5. **人工分類 CLI**：`npm run manual:classify -- preview …` → `--apply --confirm`（預設 dry-run；寫入前備份 `manual-overrides`；見 `scripts/manual_classify.js`）。
 6. **MVP Spotify 同步（假 complete 修復後）**：先 dry-run 單張 → 確認無 429 再 `--apply`（`emotion:late_night_calm` **201** 首、`lg:v2:english:soundtrack_instrumental` **15** 首；manifest 曾 complete 但線上缺歌時 apply 會 re-fetch 補 POST）。
 7. **人工分類 Web UI V1**：`npm run manual:classify:ui:build` → `npm run manual:classify:ui` → http://127.0.0.1:8892（開發：`manual:classify:ui:dev` + 同埠 API）。
-8. **跨電腦資料同步（第一階段）**：`export-data.bat --dry-run` 盤點 → `export-data.bat --output "…"` 建立 AES-256 ZIP（見 `docs/data-sync-export.md`）；**尚未實作 import**。
+8. **跨電腦資料同步**：`export-data.bat`／`import-data.bat`（見 `docs/data-sync-export.md`、`docs/data-sync-import.md`）；匯出寫入 `last-export.json`、manifest `handoff_previous_bundle_id`；匯入需 `--dry-run` 後 `--apply --confirm=I_UNDERSTAND_DATA_SYNC_IMPORT`。
 
 ---
 
@@ -169,6 +169,7 @@
 |------|------|
 | 完整 `npm test`（`--test-concurrency=1`） | 上次 **417/417**（2026-10-23）；本輪新增 **`test/data_sync_export.test.js` 15/15**（未跑全量） |
 | `npm run test:data-sync-export` | **22/22** pass（2026-10-24）；含 7-Zip 路徑／AES 相容 |
+| `npm run test:data-sync-import` | **19/19** pass（2026-10-24）；含家→公司→家→公司往返、解壓前路徑檢查、交接鏈 |
 | `test/safe_data_path.test.js` + `test/oauth_token_security.test.js` | **18/18** pass（2026-10-24）；匯出工具開發後複跑 |
 | `test/manual_classify.test.js` | **16/16** pass（2026-10-24）；未改正式 `manual-overrides` |
 | `test/mvp_playlist_sync_apply.test.js` | **10/10** pass（2026-10-24）；mock API，無真實 Spotify 寫入 |

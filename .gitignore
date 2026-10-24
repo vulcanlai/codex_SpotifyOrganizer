@@ -28,6 +28,9 @@ public/manual-classify-ui/
 # 資料同步匯出暫存與本機 ZIP 輸出目錄
 .data-sync-staging/
 .data-sync-out/
+.data-sync-state/
+.data-sync-pre-import-backup/
+.data-sync-import-staging/
 
 # Cursor 本機設定（保留共用 rules/）
 .cursor/*
