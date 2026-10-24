@@ -88,7 +88,7 @@ If Not fso.FileExists(resultFile) Then
   WScript.Quit 1
 End If
 
-cmdLine = "cmd /k " & Q(phase2Bat & " " & mode & " " & resultFile)
+cmdLine = "cmd /k call " & Q(phase2Bat) & " " & Q(mode) & " " & Q(resultFile)
 sh.Run cmdLine, 1, False
 
 WScript.Quit 0

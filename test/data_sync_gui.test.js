@@ -34,6 +34,30 @@ import {
   GUI_PICK_TRACE_LATEST_POINTER,
 } from '../lib/data_sync/gui_pick_trace.js';
 
+/**
+ * @param {Buffer} buf
+ */
+function assert_phase2_bat_cmd_safe_bytes(buf) {
+  if (
+    buf.length >= 3 &&
+    buf[0] === 0xef &&
+    buf[1] === 0xbb &&
+    buf[2] === 0xbf
+  ) {
+    assert.fail('run-gui-phase2.bat must not have UTF-8 BOM');
+  }
+  for (let i = 0; i < buf.length; i += 1) {
+    if (buf[i] > 127) {
+      assert.fail('run-gui-phase2.bat non-ASCII byte at offset ' + i);
+    }
+    if (buf[i] === 0x0a && (i === 0 || buf[i - 1] !== 0x0d)) {
+      assert.fail(
+        'run-gui-phase2.bat must use CRLF (LF-only breaks CMD parsing) at ' + i
+      );
+    }
+  }
+}
+
 test('1. 匯入預覽繁體中文格式', function () {
   const text = format_import_preview_zh(
     {
@@ -89,6 +113,60 @@ test('5. PowerShell 啟動參數含 -STA', function () {
   );
   assert.ok(argv.indexOf('-STA') >= 0);
   assert.ok(argv.indexOf('-File') >= 0);
+});
+
+test('5b. 匯出 save PS1 相容 Windows PowerShell 5.1（ShowDialog OK 後寫結果）', function () {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..'
+  );
+  const ps1_path = path.join(root, 'scripts', 'data-sync', 'win-pick-save-zip.ps1');
+  const ps1 = fs.readFileSync(ps1_path, 'utf8');
+  assert.match(
+    ps1,
+    /GetDirectoryName/,
+    '應以 .NET GetDirectoryName 解析父資料夾'
+  );
+  const ps1_code = ps1
+    .split(/\r?\n/)
+    .filter(function (line) {
+      return !/^\s*#/.test(line);
+    })
+    .join('\n');
+  assert.equal(
+    /Split-Path\s+-LiteralPath[^\r\n]+-Parent/.test(ps1_code),
+    false,
+    'PS 5.1 不允許 Split-Path -LiteralPath 與 -Parent 並用'
+  );
+  assert.match(ps1, /\[string\]\$TraceFile/, 'Trace 開啟時需接受 -TraceFile');
+  const result_file = path.join(
+    os.tmpdir(),
+    'so-save-postok-' + Date.now() + '.path'
+  );
+  const picked = path.join(root, '.data-sync-out', 'spotify-handoff-unit.zip');
+  const cmd =
+    '$picked=' +
+    JSON.stringify(picked) +
+    ';$rf=' +
+    JSON.stringify(result_file) +
+    ';$dir=[System.IO.Path]::GetDirectoryName($picked);' +
+    'if($dir -and -not (Test-Path -LiteralPath $dir)){New-Item -ItemType Directory -Path $dir -Force|Out-Null};' +
+    '$enc=New-Object System.Text.UTF8Encoding $false;' +
+    '[System.IO.File]::WriteAllText($rf,$picked,$enc)';
+  const run = spawnSync(
+    'powershell.exe',
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', cmd],
+    { encoding: 'utf8', timeout: 60000 }
+  );
+  assert.equal(run.status, 0, run.stderr || run.stdout);
+  assert.equal(
+    path.normalize(fs.readFileSync(result_file, 'utf8').trim()),
+    path.normalize(picked)
+  );
+  fs.unlinkSync(result_file);
 });
 
 test('6. 診斷訊息過濾敏感字樣', function () {
@@ -316,5 +394,47 @@ test('16. WinForms 初始化（-STA，不開啟視窗）', function () {
     open.ok,
     true,
     'OpenFileDialog init failed: ' + open.diagnostic
+  );
+});
+
+test('17. run-gui-phase2.bat 純 ASCII、CRLF，CMD 可解析', function () {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..'
+  );
+  const bat = path.join(root, 'scripts', 'data-sync', 'run-gui-phase2.bat');
+  const buf = fs.readFileSync(bat);
+  assert_phase2_bat_cmd_safe_bytes(buf);
+  const text = buf.toString('ascii');
+  assert.match(text, /set "DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN="/);
+  assert.match(text, /set "GUI_MODE=%~1"/);
+  assert.match(text, /export-data-gui\.js/);
+  const run = spawnSync('cmd.exe', ['/c', 'call', bat, '__syntax_check__'], {
+    encoding: 'utf8',
+    timeout: 30000,
+    windowsHide: true,
+  });
+  assert.equal(
+    run.status,
+    0,
+    (run.stderr || run.stdout || 'phase2 syntax check failed').slice(0, 400)
+  );
+});
+
+test('18. VBS 第二階段以 cmd /k call 分開引號啟動 phase2', function () {
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..'
+  );
+  const vbs = fs.readFileSync(
+    path.join(root, 'scripts', 'data-sync', 'run-gui-launcher.vbs'),
+    'utf8'
+  );
+  assert.match(
+    vbs,
+    /cmd \/k call " & Q\(phase2Bat\) & " " & Q\(mode\) & " " & Q\(resultFile\)/
   );
 });
