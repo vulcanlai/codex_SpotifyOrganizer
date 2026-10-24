@@ -34,3 +34,6 @@ public/manual-classify-ui/
 .DS_Store
 Thumbs.db
 *.log
+
+# 本機分類及分析報告
+/reports/
