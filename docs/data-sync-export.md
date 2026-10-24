@@ -14,6 +14,10 @@
 
 ## 指令
 
+**圖形介面（建議）**：雙擊 `匯出Spotify資料.bat`（Windows 存檔視窗，預設 `.data-sync-out\`）。
+
+**命令列**：
+
 ```bat
 cd /d D:\SpotifyOrganizer
 export-data.bat --dry-run

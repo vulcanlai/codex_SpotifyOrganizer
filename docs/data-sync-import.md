@@ -2,6 +2,10 @@
 
 ## 流程
 
+**圖形介面（建議）**：雙擊 `匯入Spotify資料.bat`（先只顯示開啟 ZIP 視窗；確認後才出現命令視窗 → 預覽 → 輸入 `yes` 才匯入）。
+
+**命令列**：
+
 1. **預覽**：`import-data.bat --input "…zip" --dry-run`（不修改 `backup/` 等正式資料）
 2. **正式匯入**：`import-data.bat --input "…zip" --apply --confirm=I_UNDERSTAND_DATA_SYNC_IMPORT`
 
@@ -35,3 +39,13 @@ ZIP 密碼由 **7-Zip 互動 `-p`** 輸入。解壓前會先檢查 ZIP 成員路
 ## 7-Zip
 
 與匯出相同：PATH → Program Files → (x86)，或 `--seven-zip`／`SPOTIFY_ORGANIZER_7Z_PATH`。
+
+## 同機模擬公司端驗收
+
+在家裡驗證正式 ZIP、不寫入 `D:\SpotifyOrganizer` 工作資料：
+
+```bat
+test-company-import.bat --input "D:\SpotifyOrganizer\.data-sync-out\你的交接.zip"
+```
+
+僅在 `%TEMP%\so-company-sim-*` 沙箱匯入；成功後自動清除沙箱；**保留 ZIP**。正式 `import-data.bat` 規則不變。

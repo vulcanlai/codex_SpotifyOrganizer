@@ -492,3 +492,111 @@ test('19. 雙電腦往返 家→公司→家→公司', async function () {
   assert.equal(lib.site, 'home');
   assert.equal(lib.v, 3);
 });
+
+test('20. 多日匯出：略過 ZIP A，公司直接匯入最新 ZIP B', async function () {
+  enable_test_env();
+  if (!resolve_seven_zip_executable()) {
+    return;
+  }
+  const home = make_source_project();
+  const company = make_empty_target();
+  const ts = Date.now();
+  const zip_a = path.join(os.tmpdir(), 'so-md-a-' + ts + '.zip');
+  const zip_b = path.join(os.tmpdir(), 'so-md-b-' + ts + '.zip');
+  const zip_c = path.join(os.tmpdir(), 'so-md-c-' + ts + '.zip');
+
+  await export_zip_from(home, zip_a);
+  assert.ok(fs.existsSync(zip_a));
+  fs.writeFileSync(
+    path.join(home, 'backup/merged/library-v2.json'),
+    JSON.stringify({ day: 2, v: 2 }),
+    'utf8'
+  );
+  await export_zip_from(home, zip_b);
+  assert.ok(fs.existsSync(zip_b));
+
+  const co_b_dr = await import_zip_to(company, zip_b, { dry_run: true });
+  assert.equal(co_b_dr.ok, true);
+  assert.equal(co_b_dr.preview.handoff.scenario, 'first_import');
+
+  await import_zip_to(company, zip_b, {
+    apply: true,
+    confirm_token: 'I_UNDERSTAND_DATA_SYNC_IMPORT',
+  });
+
+  fs.writeFileSync(
+    path.join(company, 'backup/merged/library-v2.json'),
+    JSON.stringify({ site: 'company', v: 3 }),
+    'utf8'
+  );
+  await export_zip_from(company, zip_c);
+
+  const ho_c_dr = await import_zip_to(home, zip_c, { dry_run: true });
+  assert.equal(ho_c_dr.ok, true);
+  assert.equal(ho_c_dr.preview.handoff.scenario, 'export_handoff_continuation');
+});
+
+test('21. 家裡匯出 B 後又修改資料，匯入 C 應拒絕', async function () {
+  enable_test_env();
+  if (!resolve_seven_zip_executable()) {
+    return;
+  }
+  const home = make_source_project();
+  const company = make_empty_target();
+  const ts = Date.now();
+  const zip_b = path.join(os.tmpdir(), 'so-md-b2-' + ts + '.zip');
+  const zip_c = path.join(os.tmpdir(), 'so-md-c2-' + ts + '.zip');
+
+  await export_zip_from(home, zip_b);
+  await import_zip_to(company, zip_b, {
+    apply: true,
+    confirm_token: 'I_UNDERSTAND_DATA_SYNC_IMPORT',
+  });
+  fs.writeFileSync(
+    path.join(company, 'backup/merged/library-v2.json'),
+    JSON.stringify({ remote: 9 }),
+    'utf8'
+  );
+  await export_zip_from(company, zip_c);
+
+  fs.writeFileSync(
+    path.join(home, 'backup/merged/library-v2.json'),
+    JSON.stringify({ local_edit: true }),
+    'utf8'
+  );
+
+  const dr = await import_zip_to(home, zip_c, { dry_run: true });
+  assert.equal(dr.ok, false);
+  assert.equal(dr.preview.handoff.scenario, 'local_modified');
+});
+
+test('22. 連續匯出相同資料（不同 ZIP 檔名）', async function () {
+  enable_test_env();
+  if (!resolve_seven_zip_executable()) {
+    return;
+  }
+  const home = make_source_project();
+  const ts = Date.now();
+  const zip1 = path.join(os.tmpdir(), 'so-dup-ex1-' + ts + '.zip');
+  const zip2 = path.join(os.tmpdir(), 'so-dup-ex2-' + ts + '.zip');
+  const ex1 = await export_zip_from(home, zip1);
+  const ex2 = await export_zip_from(home, zip2);
+  assert.equal(ex1.ok, true);
+  assert.equal(ex2.ok, true);
+  assert.equal(ex1.bundle_id, ex2.bundle_id);
+  assert.ok(fs.existsSync(zip1));
+  assert.ok(fs.existsSync(zip2));
+});
+
+test('23. 空白專案匯入含 handoff 的 ZIP（first_import）', function () {
+  const r = evaluate_import_handoff({
+    manifest: { handoff_previous_bundle_id: 'parent-bundle-a' },
+    bundle_id: 'bundle-b-latest',
+    import_state: null,
+    export_state: null,
+    file_rows: [],
+    project_has_sync_relevant_files: false,
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.scenario, 'first_import');
+});
