@@ -60,13 +60,15 @@ async function main() {
   }
 
   console.log('即將匯出至：' + check.abs_zip);
-  console.log('請在 7-Zip 提示時輸入加密密碼（不會寫入命令列或檔案）。');
+  console.log(
+    '將使用本機 .env 的 DATA_SYNC_ZIP_PASSWORD 自動加密並驗證（密碼不會寫入日誌）。'
+  );
   console.log('');
 
   const result = await run_data_export({
     output_zip: check.abs_zip,
     profile: 'minimal',
-    password_mode: 'interactive',
+    password_mode: 'env',
   });
 
   if (!result.ok) {

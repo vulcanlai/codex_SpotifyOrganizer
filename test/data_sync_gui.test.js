@@ -424,7 +424,7 @@ test('17. run-gui-phase2.bat 純 ASCII、CRLF，CMD 可解析', function () {
   );
 });
 
-test('18. VBS 第二階段以 cmd /k call 分開引號啟動 phase2', function () {
+test('18. VBS 第二階段以 cmd /c call 分開引號啟動 phase2', function () {
   const root = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     '..'
@@ -435,6 +435,24 @@ test('18. VBS 第二階段以 cmd /k call 分開引號啟動 phase2', function (
   );
   assert.match(
     vbs,
-    /cmd \/k call " & Q\(phase2Bat\) & " " & Q\(mode\) & " " & Q\(resultFile\)/
+    /cmd \/c call " & Q\(phase2Bat\) & " " & Q\(mode\) & " " & Q\(resultFile\)/
   );
+});
+
+test('19. run-gui-phase2.bat 成功自動關閉、失敗保留 pause', function () {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const root = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '..'
+  );
+  const bat = fs.readFileSync(
+    path.join(root, 'scripts', 'data-sync', 'run-gui-phase2.bat')
+  );
+  const text = bat.toString('ascii');
+  assert.match(text, /timeout \/t 5 \/nobreak >nul/);
+  assert.match(text, /if "%PHASE2_EXIT%"=="0"/);
+  assert.match(text, /pause/);
+  assert.doesNotMatch(text, /\r\npause\r\nendlocal/);
 });

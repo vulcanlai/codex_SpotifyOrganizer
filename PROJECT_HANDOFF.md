@@ -1,6 +1,6 @@
 # SpotifyOrganizer — 跨電腦專案交接
 
-> **最後更新**：2026-10-24（**資料同步匯出工具 v1**；MVP Spotify sync apply；**G3-F pending 0**）
+> **最後更新**：2026-10-24（**資料同步 WzAES／.env 密碼整合**；MVP Spotify sync apply；**G3-F pending 0**）
 
 ---
 
@@ -117,7 +117,7 @@
 5. **人工分類 CLI**：`npm run manual:classify -- preview …` → `--apply --confirm`（預設 dry-run；寫入前備份 `manual-overrides`；見 `scripts/manual_classify.js`）。
 6. **MVP Spotify 同步（假 complete 修復後）**：先 dry-run 單張 → 確認無 429 再 `--apply`（`emotion:late_night_calm` **201** 首、`lg:v2:english:soundtrack_instrumental` **15** 首；manifest 曾 complete 但線上缺歌時 apply 會 re-fetch 補 POST）。
 7. **人工分類 Web UI V1**：`npm run manual:classify:ui:build` → `npm run manual:classify:ui` → http://127.0.0.1:8892（開發：`manual:classify:ui:dev` + 同埠 API）。
-8. **跨電腦資料同步**：`export-data.bat`／`import-data.bat`（見 `docs/data-sync-export.md`、`docs/data-sync-import.md`）；匯出寫入 `last-export.json`、manifest `handoff_previous_bundle_id`；匯入需 `--dry-run` 後 `--apply --confirm=I_UNDERSTAND_DATA_SYNC_IMPORT`。
+8. **跨電腦資料同步**：GUI `run-gui-phase2.bat` 或 `export-data.bat`／`import-data.bat`；**WzAES AES-256**（`archiver-zip-encrypted` + `@zip.js/zip.js`）；密碼僅來自各電腦本機 `.env` 的 **`DATA_SYNC_ZIP_PASSWORD`**（不寫入 process.env／日誌）；7-Zip 選用人工檢查；匯出寫入 `last-export.json`、manifest `handoff_previous_bundle_id`；匯入需 dry-run 後 `--apply --confirm=I_UNDERSTAND_DATA_SYNC_IMPORT`。
 
 ---
 
@@ -168,8 +168,12 @@
 | 項目 | 結果 |
 |------|------|
 | 完整 `npm test`（`--test-concurrency=1`） | 上次 **417/417**（2026-10-23）；本輪新增 **`test/data_sync_export.test.js` 15/15**（未跑全量） |
-| `npm run test:data-sync-export` | **22/22** pass（2026-10-24）；含 7-Zip 路徑／AES 相容 |
-| `npm run test:data-sync-import` | **19/19** pass（2026-10-24）；含家→公司→家→公司往返、解壓前路徑檢查、交接鏈 |
+| `npm run test:data-sync-export` | **29/29** pass（2026-10-24 本機 Win10）；WzAES 匯出／env 與 stdin 測試、7-Zip 路徑偵測保留 |
+| `npm run test:data-sync-import` | **23/23** pass（2026-10-24 本機 Win10） |
+| `npm run test:wzaes-zip` | **6/6** pass（2026-10-24 本機 Win10）；7-Zip 雙向相容、大檔 SHA、密碼探測 |
+| `npm run test:acceptance-sandbox-import` | **12/12** pass（2026-10-24 本機 Win10） |
+| `npm run test:data-sync-gui` | **19/19** pass（2026-10-24 本機 Win10） |
+| **Win11 公司機** | **待實機驗證**（同 repo + `npm ci` + `.env` 密碼） |
 | `test/safe_data_path.test.js` + `test/oauth_token_security.test.js` | **18/18** pass（2026-10-24）；匯出工具開發後複跑 |
 | `test/manual_classify.test.js` | **16/16** pass（2026-10-24）；未改正式 `manual-overrides` |
 | `test/mvp_playlist_sync_apply.test.js` | **10/10** pass（2026-10-24）；mock API，無真實 Spotify 寫入 |

@@ -23,8 +23,15 @@ import {
   restore_from_pre_import_backup,
 } from '../lib/data_sync/import_backup.js';
 import { validate_zip_input_path } from '../lib/data_sync/path_guard.js';
-import { FORBIDDEN_ABSOLUTE_ROOTS } from '../lib/data_sync/constants.js';
-import { resolve_seven_zip_executable } from '../lib/data_sync/seven_zip.js';
+import {
+  FORBIDDEN_ABSOLUTE_ROOTS,
+  ENV_DATA_SYNC_ZIP_PASSWORD,
+} from '../lib/data_sync/constants.js';
+import {
+  create_unique_acceptance_sandbox,
+  remove_acceptance_sandbox_safely,
+} from '../lib/data_sync/acceptance_sandbox.js';
+import { resolve_project_root_from_anchor } from '../lib/data_sync/project_root.js';
 import { hash_file_sha256_sync } from '../lib/data_sync/file_hash.js';
 
 const TEST_PASSWORD = 'test-import-password-value';
@@ -88,10 +95,6 @@ async function import_zip_to(target, zip_path, opts) {
 
 test('1. 正常初次匯入', async function () {
   enable_test_env();
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const zip = path.join(os.tmpdir(), 'so-imp-' + Date.now() + '.zip');
@@ -110,10 +113,6 @@ test('1. 正常初次匯入', async function () {
 
 test('2. 正常接續匯入', async function () {
   enable_test_env();
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const zip1 = path.join(os.tmpdir(), 'so-imp-a-' + Date.now() + '.zip');
@@ -136,9 +135,6 @@ test('2. 正常接續匯入', async function () {
 
 test('3. 重複匯入同一 ZIP', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const zip = path.join(os.tmpdir(), 'so-imp-dup-' + Date.now() + '.zip');
@@ -157,9 +153,6 @@ test('3. 重複匯入同一 ZIP', async function () {
 
 test('4. 匯入較舊 ZIP 拒絕', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const zip_old = path.join(os.tmpdir(), 'so-imp-old-' + Date.now() + '.zip');
@@ -190,9 +183,6 @@ test('4. 匯入較舊 ZIP 拒絕', async function () {
 
 test('5. 本機資料修改後衝突', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const zip1 = path.join(os.tmpdir(), 'so-imp-lm1-' + Date.now() + '.zip');
@@ -270,9 +260,6 @@ test('9. 大小寫路徑衝突', function () {
 
 test('10. 錯誤密碼', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const zip = path.join(os.tmpdir(), 'so-imp-wpass-' + Date.now() + '.zip');
   await export_zip_from(src, zip);
@@ -285,9 +272,6 @@ test('10. 錯誤密碼', async function () {
 
 test('11. 本機有資料無交接紀錄拒絕', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_source_project();
   const zip = path.join(os.tmpdir(), 'so-imp-nostate-' + Date.now() + '.zip');
@@ -325,9 +309,6 @@ test('12. 備份與復原（含本次新增檔移除）', function () {
 
 test('13. Dry Run 不修改正式檔', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const zip1 = path.join(os.tmpdir(), 'so-imp-dry1-' + Date.now() + '.zip');
@@ -391,9 +372,6 @@ test('16. 匯入後驗證失敗還原', function () {
 
 test('17. 不寫入 .env', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const src = make_source_project();
   const tgt = make_empty_target();
   const env_path = path.join(tgt, '.env');
@@ -429,9 +407,6 @@ test('18. handoff 衝突邏輯', function () {
 
 test('19. 雙電腦往返 家→公司→家→公司', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const home = make_source_project();
   const company = make_empty_target();
   const ts = Date.now();
@@ -495,9 +470,6 @@ test('19. 雙電腦往返 家→公司→家→公司', async function () {
 
 test('20. 多日匯出：略過 ZIP A，公司直接匯入最新 ZIP B', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const home = make_source_project();
   const company = make_empty_target();
   const ts = Date.now();
@@ -538,9 +510,6 @@ test('20. 多日匯出：略過 ZIP A，公司直接匯入最新 ZIP B', async f
 
 test('21. 家裡匯出 B 後又修改資料，匯入 C 應拒絕', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const home = make_source_project();
   const company = make_empty_target();
   const ts = Date.now();
@@ -572,9 +541,6 @@ test('21. 家裡匯出 B 後又修改資料，匯入 C 應拒絕', async functio
 
 test('22. 連續匯出相同資料（不同 ZIP 檔名）', async function () {
   enable_test_env();
-  if (!resolve_seven_zip_executable()) {
-    return;
-  }
   const home = make_source_project();
   const ts = Date.now();
   const zip1 = path.join(os.tmpdir(), 'so-dup-ex1-' + ts + '.zip');
@@ -599,4 +565,62 @@ test('23. 空白專案匯入含 handoff 的 ZIP（first_import）', function () 
   });
   assert.equal(r.ok, true);
   assert.equal(r.scenario, 'first_import');
+});
+
+test('24. 僅沙箱 override 且無 sync_env 時 env 模式不得從 Temp 讀密碼', async function () {
+  enable_test_env();
+  const src = make_source_project();
+  const zip = path.join(os.tmpdir(), 'so-imp-sbox-env-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  delete process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
+  const anchor = resolve_project_root_from_anchor();
+  const sandbox = create_unique_acceptance_sandbox(anchor);
+  const dr = await run_data_import({
+    project_root_override: sandbox.sandbox_real,
+    input_zip: zip,
+    dry_run: true,
+    password_mode: 'env',
+  });
+  assert.equal(dr.ok, false);
+  assert.match(dr.reason_zh || '', /沙箱|DATA_SYNC_ZIP_PASSWORD|\.env/);
+  remove_acceptance_sandbox_safely(
+    sandbox.sandbox_real,
+    sandbox.sandbox_path
+  );
+});
+
+test('25. sync_env 指向有 .env 的正式根、override 為空沙箱時 dry-run 可解密', async function () {
+  enable_test_env();
+  const formal = fs.mkdtempSync(path.join(os.tmpdir(), 'so-imp-formal-env-'));
+  for (let j = 0; j < REQUIRED_CORE.length; j += 1) {
+    const p = path.join(formal, REQUIRED_CORE[j].split('/').join(path.sep));
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, '{}', 'utf8');
+  }
+  fs.writeFileSync(
+    path.join(formal, '.env'),
+    ENV_DATA_SYNC_ZIP_PASSWORD + '=' + TEST_PASSWORD + '\n',
+    'utf8'
+  );
+  const src = make_source_project();
+  const zip = path.join(os.tmpdir(), 'so-imp-sync-env-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  delete process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
+  const anchor = resolve_project_root_from_anchor();
+  const sandbox = create_unique_acceptance_sandbox(anchor);
+  assert.equal(fs.existsSync(path.join(sandbox.sandbox_real, '.env')), false);
+  const dr = await run_data_import({
+    project_root_override: sandbox.sandbox_real,
+    sync_env_project_root: formal,
+    input_zip: zip,
+    dry_run: true,
+    password_mode: 'env',
+  });
+  assert.equal(dr.ok, true, dr.reason_zh || '');
+  assert.equal(dr.preview.handoff.scenario, 'first_import');
+  remove_acceptance_sandbox_safely(
+    sandbox.sandbox_real,
+    sandbox.sandbox_path
+  );
+  fs.rmSync(formal, { recursive: true, force: true });
 });

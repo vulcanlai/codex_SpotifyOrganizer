@@ -12,19 +12,33 @@ import {
 } from '../lib/data_sync/export_profile_minimal.js';
 import { validate_zip_output_path } from '../lib/data_sync/path_guard.js';
 import { resolve_allowed_data_file_path } from '../lib/classification/manual_classify/safe_data_path.js';
-import { run_data_export } from '../lib/data_sync/export_run.js';
+import {
+  run_data_export,
+  remove_failed_export_zip_safe,
+} from '../lib/data_sync/export_run.js';
 import { hash_file_sha256_sync } from '../lib/data_sync/file_hash.js';
 import {
-  create_aes256_zip_from_staging,
+  create_aes256_zip_from_staging as create_seven_zip_aes_from_staging,
   resolve_seven_zip_executable,
   resolve_seven_zip_for_export,
   parse_seven_zip_version_from_help,
   seven_zip_help_supports_aes256_zip,
   seven_zip_executable_supports_aes256_zip,
   validate_manual_seven_zip_path,
-  verify_zip_encryption_and_list,
+  resolve_seven_zip_password_stdio_mode,
 } from '../lib/data_sync/seven_zip.js';
-import { clear_data_sync_test_env_for_production_cli } from '../lib/data_sync/production_cli_guard.js';
+import {
+  create_aes256_zip_from_staging,
+  verify_zip_encryption_and_list,
+} from '../lib/data_sync/wzaes_zip.js';
+import { resolve_sync_zip_password, redact_sync_zip_secrets } from '../lib/data_sync/sync_zip_password.js';
+import { ENV_ALLOW_7Z_PASSWORD_STDIN } from '../lib/data_sync/constants.js';
+import { spawnSync } from 'node:child_process';
+import { sync_export_state_file_path } from '../lib/data_sync/sync_state.js';
+import {
+  clear_data_sync_test_env_for_production_cli,
+  assert_production_export_password_mode,
+} from '../lib/data_sync/production_cli_guard.js';
 import { verify_zip_contents_by_extract } from '../lib/data_sync/zip_content_verify.js';
 import {
   create_export_staging_dir,
@@ -109,11 +123,6 @@ test('1. 正常檔案匯出（AES-256 + manifest 一致）', async function () {
   const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
   const zip_path = path.join(out_dir, 'pack.zip');
 
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
-
   const result = await run_data_export({
     project_root_override: root,
     output_zip: zip_path,
@@ -132,10 +141,6 @@ test('2. 可選檔案不存在仍成功', async function () {
   const root = make_fake_project();
   const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
   const zip_path = path.join(out_dir, 'optional.zip');
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
 
   const result = await run_data_export({
     project_root_override: root,
@@ -185,10 +190,6 @@ test('5. 匯出期間來源檔案改變應失敗', async function () {
   const root = make_fake_project();
   const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
   const zip_path = path.join(out_dir, 'race.zip');
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
 
   const target = path.join(root, 'backup/merged/library-v2.json');
   const original_create = create_aes256_zip_from_staging;
@@ -200,8 +201,7 @@ test('5. 匯出期間來源檔案改變應失敗', async function () {
     password_mode: 'stdin',
     stdin_password: TEST_PASSWORD,
     seven_zip_hooks: {
-      executable: seven,
-      create: function (opts) {
+      create: async function (opts) {
         hooked = true;
         fs.appendFileSync(target, '\n', 'utf8');
         return original_create(opts);
@@ -297,15 +297,9 @@ test('11. 7-Zip 加密失敗時刪除無效 ZIP', async function () {
 test('12. 正式模式禁止 stdin 密碼', function () {
   const prev = process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
   delete process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
-  assert.throws(function () {
-    create_aes256_zip_from_staging({
-      executable: '7z',
-      output_zip: 'x.zip',
-      staging_root: '.',
-      password_mode: 'stdin',
-      stdin_password: 'x',
-    });
-  });
+  const root = make_fake_project();
+  const res = resolve_sync_zip_password(root, 'stdin', TEST_PASSWORD);
+  assert.equal(res.ok, false);
   if (prev) {
     process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN = prev;
   }
@@ -316,10 +310,6 @@ test('13. ZIP 內容與 manifest 不一致時失敗', async function () {
   const root = make_fake_project();
   const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
   const zip_path = path.join(out_dir, 'mismatch.zip');
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
 
   const result = await run_data_export({
     project_root_override: root,
@@ -327,9 +317,8 @@ test('13. ZIP 內容與 manifest 不一致時失敗', async function () {
     password_mode: 'stdin',
     stdin_password: TEST_PASSWORD,
     seven_zip_hooks: {
-      executable: seven,
       create: create_aes256_zip_from_staging,
-      verify: function () {
+      verify: async function () {
         return {
           ok: true,
           entries: [{ path: 'export-manifest.json', size: 1 }],
@@ -348,15 +337,11 @@ test('14. 排除規則不納入 snapshots／.env', function () {
   assert.equal(should_exclude_relative_path('imports/README.md'), true);
 });
 
-test('16. 密碼錯誤時 7-Zip 列表失敗', async function () {
+test('16. 密碼錯誤時列表／驗證失敗', async function () {
   enable_test_env();
   const root = make_fake_project();
   const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
   const zip_path = path.join(out_dir, 'wrong-pass.zip');
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
   const packed = await run_data_export({
     project_root_override: root,
     output_zip: zip_path,
@@ -364,11 +349,9 @@ test('16. 密碼錯誤時 7-Zip 列表失敗', async function () {
     stdin_password: TEST_PASSWORD,
   });
   assert.equal(packed.ok, true);
-  const bad = verify_zip_encryption_and_list({
-    executable: seven,
+  const bad = await verify_zip_encryption_and_list({
     zip_path: zip_path,
-    password_mode: 'stdin',
-    stdin_password: 'wrong-password-value',
+    password: 'wrong-password-value',
   });
   assert.equal(bad.ok, false);
 });
@@ -378,10 +361,6 @@ test('17. 解壓 SHA-256 與 manifest 一致（非只比對來源）', async fun
   const root = make_fake_project();
   const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
   const zip_path = path.join(out_dir, 'extract-verify.zip');
-  const seven = resolve_seven_zip_executable();
-  if (!seven) {
-    return;
-  }
   const result = await run_data_export({
     project_root_override: root,
     output_zip: zip_path,
@@ -389,12 +368,10 @@ test('17. 解壓 SHA-256 與 manifest 一致（非只比對來源）', async fun
     stdin_password: TEST_PASSWORD,
   });
   assert.equal(result.ok, true);
-  const tamper = verify_zip_contents_by_extract({
-    executable: seven,
+  const tamper = await verify_zip_contents_by_extract({
     zip_path: zip_path,
     manifest: result.manifest,
-    password_mode: 'stdin',
-    stdin_password: TEST_PASSWORD,
+    password: TEST_PASSWORD,
   });
   assert.equal(tamper.ok, true);
 });
@@ -457,4 +434,146 @@ test('15. 專案內輸出必須在 .data-sync-out 下', function () {
   const good = path.join(root, '.data-sync-out', 'pack.zip');
   const check_good = validate_zip_output_path(good, root);
   assert.equal(check_good.ok, true);
+});
+
+test('23. 正式 env 模式拒絕測試密碼開關', function () {
+  process.env[ENV_ALLOW_7Z_PASSWORD_STDIN] = '1';
+  assert.throws(function () {
+    assert_production_export_password_mode('env');
+  });
+  enable_test_env();
+  assert.doesNotThrow(function () {
+    assert_production_export_password_mode('stdin');
+  });
+});
+
+test('24. Windows 7z t 無法以 Node pipe stdin 餵 -p 密碼（區分驗證程式錯誤）', function () {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  enable_test_env();
+  const seven = resolve_seven_zip_executable();
+  if (!seven) {
+    return;
+  }
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'so-7zt-pipe-'));
+  const staging = path.join(tmp, 'stg');
+  fs.mkdirSync(staging);
+  fs.writeFileSync(path.join(staging, 'export-manifest.json'), '{}');
+  const zip = path.join(tmp, 'pipe-test.zip');
+  const pack = create_seven_zip_aes_from_staging({
+    executable: seven,
+    output_zip: zip,
+    staging_root: staging,
+    password_mode: 'stdin',
+    stdin_password: TEST_PASSWORD,
+  });
+  assert.equal(pack.ok, true);
+  delete process.env[ENV_ALLOW_7Z_PASSWORD_STDIN];
+  const piped = spawnSync(seven, ['t', '-p', zip], {
+    input: TEST_PASSWORD + '\n',
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.notEqual(piped.status, 0, 'pipe stdin 不應通過 7z t');
+  const argv_ok = spawnSync(seven, ['t', '-p' + TEST_PASSWORD, zip], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+  assert.equal(argv_ok.status, 0, 'argv -p 應通過 7z t');
+  enable_test_env();
+});
+
+test('25. 驗證失敗只刪本次 ZIP，保留同目錄既有檔', async function () {
+  enable_test_env();
+  const root = make_fake_project();
+  const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
+  const decoy = path.join(out_dir, 'keep-decoy.zip');
+  fs.writeFileSync(decoy, 'decoy-not-a-real-zip', 'utf8');
+  const zip_path = path.join(out_dir, 'new-export.zip');
+  const result = await run_data_export({
+    project_root_override: root,
+    output_zip: zip_path,
+    password_mode: 'stdin',
+    stdin_password: TEST_PASSWORD,
+    seven_zip_hooks: {
+      verify: async function () {
+        return { ok: false, reason_zh: 'hook verify fail', entries: [] };
+      },
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason_zh, /ZIP 驗證失敗/);
+  assert.equal(fs.existsSync(zip_path), false, '本次 ZIP 應被清理');
+  assert.equal(fs.existsSync(decoy), true, '同目錄既有檔不得刪除');
+});
+
+test('26. 損壞 ZIP 驗證失敗（非僅密碼錯誤訊息）', async function () {
+  enable_test_env();
+  const bad = path.join(os.tmpdir(), 'so-corrupt-' + Date.now() + '.zip');
+  fs.writeFileSync(bad, 'not-a-valid-zip', 'utf8');
+  const r = await verify_zip_encryption_and_list({
+    zip_path: bad,
+    password: TEST_PASSWORD,
+  });
+  assert.equal(r.ok, false);
+  assert.notEqual(r.reason_zh, 'ZIP 密碼錯誤');
+  fs.unlinkSync(bad);
+});
+
+test('27. 驗證失敗不寫入 export 交接狀態', async function () {
+  enable_test_env();
+  const root = make_fake_project();
+  const state_file = sync_export_state_file_path(root);
+  const out_dir = path.join(root, '.data-sync-out');
+  fs.mkdirSync(out_dir, { recursive: true });
+  const zip_path = path.join(out_dir, 'no-state-write.zip');
+  const result = await run_data_export({
+    project_root_override: root,
+    output_zip: zip_path,
+    password_mode: 'stdin',
+    stdin_password: TEST_PASSWORD,
+    seven_zip_hooks: {
+      verify: async function () {
+        return { ok: false, reason_zh: 'hook verify fail', entries: [] };
+      },
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.equal(fs.existsSync(state_file), false);
+});
+
+test('28. 密碼遮蔽不含明文', function () {
+  const secret = 'unit-test-secret-value';
+  const scrubbed = redact_sync_zip_secrets(
+    'failed with password=' + secret + ' tail',
+    secret
+  );
+  assert.equal(scrubbed.indexOf(secret), -1);
+  assert.match(scrubbed, /REDACTED|已省略/);
+});
+
+test('30. remove_failed_export_zip_safe 刪除不存在檔案不報錯', function () {
+  assert.equal(
+    remove_failed_export_zip_safe(path.join(os.tmpdir(), 'so-no-such-zip.zip')),
+    null
+  );
+});
+
+test('29. env 模式缺少 .env 時明確失敗', async function () {
+  const prev = process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
+  delete process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
+  process.env.DATA_SYNC_ALLOW_PROJECT_ROOT_OVERRIDE = '1';
+  const root = make_fake_project();
+  const out_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-export-out-'));
+  const result = await run_data_export({
+    project_root_override: root,
+    output_zip: path.join(out_dir, 'no-env.zip'),
+    password_mode: 'env',
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.reason_zh, /DATA_SYNC_ZIP_PASSWORD|\.env/);
+  if (prev) {
+    process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN = prev;
+  }
 });

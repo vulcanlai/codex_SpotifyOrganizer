@@ -23,11 +23,15 @@ if /i "%GUI_MODE%"=="acceptance" (
 )
 
 echo Unknown GUI mode: %GUI_MODE%
-set "ERR=1"
-goto done
+exit /b 1
 
 :done
-set "ERR=%ERRORLEVEL%"
+set "PHASE2_EXIT=%ERRORLEVEL%"
 echo.
-pause
-endlocal & exit /b %ERR%
+if "%PHASE2_EXIT%"=="0" (
+  echo Closing in 5 seconds...
+  timeout /t 5 /nobreak >nul
+) else (
+  pause
+)
+endlocal & exit /b %PHASE2_EXIT%

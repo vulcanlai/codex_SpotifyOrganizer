@@ -3,6 +3,7 @@
  */
 import { run_data_import } from '../../lib/data_sync/import_run.js';
 import { clear_data_sync_test_env_for_production_cli } from '../../lib/data_sync/production_cli_guard.js';
+import { resolve_project_root_from_anchor } from '../../lib/data_sync/project_root.js';
 import { IMPORT_APPLY_CONFIRM_TOKEN } from '../../lib/data_sync/constants.js';
 
 clear_data_sync_test_env_for_production_cli();
@@ -85,13 +86,15 @@ if (!args.dry_run && !args.apply) {
   process.exit(2);
 }
 
+const sync_env_root = resolve_project_root_from_anchor();
 run_data_import({
   input_zip: args.input,
   dry_run: args.dry_run,
   apply: args.apply,
   confirm_token: args.confirm,
   seven_zip_path: args.seven_zip,
-  password_mode: 'interactive',
+  password_mode: 'env',
+  sync_env_project_root: sync_env_root,
 })
   .then(function (result) {
     if (result.preview && result.preview.seven_zip) {

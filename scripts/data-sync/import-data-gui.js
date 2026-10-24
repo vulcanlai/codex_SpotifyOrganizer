@@ -82,11 +82,15 @@ async function main() {
   console.log('來源 ZIP：' + input_zip);
   console.log('');
 
-  const dry = await run_data_import({
+  const import_common = {
     input_zip: input_zip,
-    dry_run: true,
-    password_mode: 'interactive',
-  });
+    password_mode: 'env',
+    sync_env_project_root: project_root,
+  };
+
+  const dry = await run_data_import(
+    Object.assign({}, import_common, { dry_run: true })
+  );
 
   if (dry.preview && dry.preview.seven_zip) {
     console.error(
@@ -121,12 +125,12 @@ async function main() {
     process.exit(0);
   }
 
-  const applied = await run_data_import({
-    input_zip: input_zip,
-    apply: true,
-    confirm_token: IMPORT_APPLY_CONFIRM_TOKEN,
-    password_mode: 'interactive',
-  });
+  const applied = await run_data_import(
+    Object.assign({}, import_common, {
+      apply: true,
+      confirm_token: IMPORT_APPLY_CONFIRM_TOKEN,
+    })
+  );
 
   if (!applied.ok) {
     console.error('匯入失敗：' + (applied.reason_zh || '未知錯誤'));

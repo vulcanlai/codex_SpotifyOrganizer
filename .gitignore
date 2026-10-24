@@ -25,6 +25,10 @@ public/manual-classify-ui/
 # 執行期 lock
 .enrich.lock
 
+# PTY 隔離 spike（本機 npm install，勿提交）
+scripts/data-sync/pty-spike/node_modules/
+scripts/data-sync/aes-spike/node_modules/
+
 # 資料同步匯出暫存與本機 ZIP 輸出目錄
 .data-sync-staging/
 .data-sync-out/

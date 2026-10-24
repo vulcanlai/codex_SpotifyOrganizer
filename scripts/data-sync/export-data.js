@@ -90,7 +90,7 @@ run_data_export({
   output_zip: args.output || '',
   profile: args.profile,
   dry_run: args.dry_run,
-  password_mode: 'interactive',
+  password_mode: 'env',
   seven_zip_path: args.seven_zip,
 })
   .then(function (result) {

@@ -53,7 +53,7 @@ async function main() {
 
   const result = await run_acceptance_company_import({
     input_zip: input_zip,
-    password_mode: 'interactive',
+    password_mode: 'env',
     cleanup_on_success: true,
   });
 

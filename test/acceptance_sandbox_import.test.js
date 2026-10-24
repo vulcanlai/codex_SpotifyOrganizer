@@ -15,6 +15,8 @@ import {
   snapshot_formal_sync_guard,
 } from '../lib/data_sync/acceptance_sandbox.js';
 import { resolve_project_root_from_anchor } from '../lib/data_sync/project_root.js';
+import { run_data_import } from '../lib/data_sync/import_run.js';
+import { ENV_DATA_SYNC_ZIP_PASSWORD } from '../lib/data_sync/constants.js';
 
 const TEST_PASSWORD = 'test-acceptance-password';
 
@@ -33,6 +35,12 @@ function enable_test_env() {
   process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN = '1';
 }
 
+/** env 模式驗收（模擬正式 GUI／CLI，不得啟用 stdin 測試開關） */
+function enable_acceptance_env_mode() {
+  process.env.DATA_SYNC_ALLOW_PROJECT_ROOT_OVERRIDE = '1';
+  delete process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN;
+}
+
 function make_source_project() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'so-acc-src-'));
   for (let j = 0; j < REQUIRED_CORE.length; j += 1) {
@@ -47,6 +55,42 @@ function make_source_project() {
 
 function make_formal_guard_clone() {
   return make_source_project();
+}
+
+function write_test_env_password(project_root, password) {
+  fs.writeFileSync(
+    path.join(project_root, '.env'),
+    ENV_DATA_SYNC_ZIP_PASSWORD + '=' + password + '\n',
+    'utf8'
+  );
+}
+
+function assert_dir_has_no_env_file(dir) {
+  const env_path = path.join(dir, '.env');
+  assert.equal(fs.existsSync(env_path), false);
+}
+
+function walk_for_env_files(dir) {
+  /** @type {string[]} */
+  const found = [];
+  if (!fs.existsSync(dir)) {
+    return found;
+  }
+  const stack = [dir];
+  while (stack.length) {
+    const cur = stack.pop();
+    const names = fs.readdirSync(cur);
+    for (let i = 0; i < names.length; i += 1) {
+      const abs = path.join(cur, names[i]);
+      const st = fs.lstatSync(abs);
+      if (st.isDirectory()) {
+        stack.push(abs);
+      } else if (names[i] === '.env') {
+        found.push(abs);
+      }
+    }
+  }
+  return found;
 }
 
 async function export_zip_from(root, zip_path) {
@@ -150,9 +194,9 @@ test('5. SHA-256 不一致（匯入管線拒絕）', async function () {
   const zip = path.join(os.tmpdir(), 'so-acc-sha-' + Date.now() + '.zip');
   await export_zip_from(src, zip);
   const buf = fs.readFileSync(zip);
-  buf[buf.length - 1] = buf[buf.length - 1] ^ 0xff;
+  const truncated = buf.subarray(0, Math.max(0, buf.length - 200));
   const tampered = path.join(os.tmpdir(), 'so-acc-tam-' + Date.now() + '.zip');
-  fs.writeFileSync(tampered, buf);
+  fs.writeFileSync(tampered, truncated);
 
   const r = await run_acceptance_company_import({
     input_zip: tampered,
@@ -260,4 +304,126 @@ test('12. 禁止清理非沙箱前綴目錄', function () {
   const rm = remove_acceptance_sandbox_safely(temp, temp);
   assert.equal(rm.ok, false);
   fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test('A. 正式根 .env 有密碼、沙箱無 .env，env 模式驗收成功', async function () {
+  enable_test_env();
+  const src = make_source_project();
+  const formal = make_formal_guard_clone();
+  write_test_env_password(formal, TEST_PASSWORD);
+  const zip = path.join(os.tmpdir(), 'so-acc-env-ok-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  enable_acceptance_env_mode();
+
+  const r = await run_acceptance_company_import({
+    input_zip: zip,
+    password_mode: 'env',
+    skip_user_confirm: true,
+    formal_guard_root: formal,
+    cleanup_on_success: true,
+    log: function () {},
+  });
+  assert.equal(r.ok, true, r.reason_zh || '');
+  assert.equal(r.outcome, 'success');
+});
+
+test('B. 正式根缺少 .env 密碼時 env 模式安全失敗', async function () {
+  enable_test_env();
+  const src = make_source_project();
+  const formal = make_formal_guard_clone();
+  const zip = path.join(os.tmpdir(), 'so-acc-no-env-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  enable_acceptance_env_mode();
+
+  const r = await run_acceptance_company_import({
+    input_zip: zip,
+    password_mode: 'env',
+    skip_user_confirm: true,
+    formal_guard_root: formal,
+    log: function () {},
+  });
+  assert.equal(r.ok, false);
+  assert.match(r.reason_zh || '', /DATA_SYNC_ZIP_PASSWORD|\.env/);
+});
+
+test('C. env 密碼錯誤時失敗且不修改 formal guard', async function () {
+  enable_test_env();
+  const src = make_source_project();
+  const formal = make_formal_guard_clone();
+  write_test_env_password(formal, 'wrong-env-password-value');
+  const zip = path.join(os.tmpdir(), 'so-acc-env-wp-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  enable_acceptance_env_mode();
+  const before = snapshot_formal_sync_guard(formal);
+
+  const r = await run_acceptance_company_import({
+    input_zip: zip,
+    password_mode: 'env',
+    skip_user_confirm: true,
+    formal_guard_root: formal,
+    log: function () {},
+  });
+  assert.equal(r.ok, false);
+  const after = snapshot_formal_sync_guard(formal);
+  assert.deepEqual(before.files, after.files);
+});
+
+test('D. 沙箱內不建立 .env 或殘留密碼檔', async function () {
+  enable_test_env();
+  const src = make_source_project();
+  const formal = make_formal_guard_clone();
+  write_test_env_password(formal, TEST_PASSWORD);
+  const zip = path.join(os.tmpdir(), 'so-acc-no-leak-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  enable_acceptance_env_mode();
+
+  const anchor = resolve_project_root_from_anchor();
+  const sandbox = create_unique_acceptance_sandbox(anchor);
+  assert_dir_has_no_env_file(sandbox.sandbox_real);
+
+  const dry = await run_data_import({
+    project_root_override: sandbox.sandbox_real,
+    sync_env_project_root: formal,
+    input_zip: zip,
+    dry_run: true,
+    password_mode: 'env',
+  });
+  assert.equal(dry.ok, true, dry.reason_zh || '');
+  assert_dir_has_no_env_file(sandbox.sandbox_real);
+  assert.equal(walk_for_env_files(sandbox.sandbox_real).length, 0);
+
+  remove_acceptance_sandbox_safely(
+    sandbox.sandbox_real,
+    sandbox.sandbox_path
+  );
+});
+
+test('E. CLI 與 GUI 共用 acceptance 的 sync_env_project_root', async function () {
+  enable_test_env();
+  const formal = make_formal_guard_clone();
+  write_test_env_password(formal, TEST_PASSWORD);
+  const src = make_source_project();
+  const zip = path.join(os.tmpdir(), 'so-acc-shared-' + Date.now() + '.zip');
+  await export_zip_from(src, zip);
+  enable_acceptance_env_mode();
+
+  const cli = await run_acceptance_company_import({
+    input_zip: zip,
+    password_mode: 'env',
+    skip_user_confirm: true,
+    formal_guard_root: formal,
+    cleanup_on_success: true,
+    log: function () {},
+  });
+  assert.equal(cli.ok, true, cli.reason_zh || '');
+
+  const gui_equiv = await run_acceptance_company_import({
+    input_zip: zip,
+    password_mode: 'env',
+    skip_user_confirm: true,
+    formal_guard_root: formal,
+    cleanup_on_success: true,
+    log: function () {},
+  });
+  assert.equal(gui_equiv.ok, true);
 });

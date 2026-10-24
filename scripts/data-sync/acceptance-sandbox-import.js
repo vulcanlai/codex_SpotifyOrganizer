@@ -60,7 +60,7 @@ if (!args.input) {
 run_acceptance_company_import({
   input_zip: args.input,
   seven_zip_path: args.seven_zip,
-  password_mode: 'interactive',
+  password_mode: 'env',
   cleanup_on_success: true,
 })
   .then(function (result) {
