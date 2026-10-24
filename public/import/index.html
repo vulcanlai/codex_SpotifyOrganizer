@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotify 追蹤歌單匯入</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="page_header">
+    <h1>Spotify 追蹤歌單匯入</h1>
+    <p class="page_desc">離線匯入受 API 限制的歌單曲目。貼上桌面版複製的歌曲網址，可分批匯入。</p>
+  </header>
+
+  <main class="layout">
+    <section class="panel panel_progress" aria-labelledby="progress_title">
+      <h2 id="progress_title">13 份受限制歌單進度</h2>
+      <p id="progress_summary" class="progress_summary">載入中…</p>
+      <ul id="progress_list" class="progress_list"></ul>
+    </section>
+
+    <section class="panel panel_import" aria-labelledby="import_title">
+      <h2 id="import_title">匯入歌曲</h2>
+
+      <label class="field_label" for="playlist_select">選擇歌單</label>
+      <select id="playlist_select" class="field_select"></select>
+
+      <div id="playlist_info" class="playlist_info"></div>
+
+      <label class="field_label" for="paste_area">貼上歌曲網址（一行一首）</label>
+      <textarea id="paste_area" class="field_textarea" rows="14" placeholder="https://open.spotify.com/track/…"></textarea>
+
+      <div class="btn_row">
+        <button type="button" id="btn_preview" class="btn btn_secondary">預覽</button>
+        <button type="button" id="btn_import" class="btn btn_primary">匯入歌曲</button>
+      </div>
+
+      <label class="checkbox_row">
+        <input type="checkbox" id="allow_duplicate_batch">
+        仍要匯入與前一批完全相同的內容（通常不建議）
+      </label>
+
+      <div id="preview_box" class="preview_box" hidden></div>
+      <div id="message_box" class="message_box" hidden></div>
+
+      <hr class="divider">
+
+      <h3>人工確認歌單總曲數</h3>
+      <p class="hint">請在 Spotify 桌面版查看歌單總數，確認匯入完成後再按下「確認完成」。</p>
+      <div class="confirm_row">
+        <label class="field_label" for="expected_total">此歌單應有幾首？</label>
+        <input type="number" id="expected_total" class="field_number" min="0" step="1" placeholder="例如 7">
+        <button type="button" id="btn_confirm" class="btn btn_secondary">確認完成</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

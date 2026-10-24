@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spotify 智慧分類預覽</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top_bar">
+    <div class="top_bar_inner">
+      <div class="brand_block">
+        <h1 class="brand_title">Spotify 智慧分類預覽</h1>
+        <p class="brand_desc">本機唯讀預覽與人工覆寫。資料來自 library-v2 與歌曲資訊快取，不連線 Spotify。</p>
+      </div>
+      <div class="top_actions">
+        <p id="system_status" class="system_status" aria-live="polite">載入中…</p>
+        <button type="button" id="btn_rebuild" class="btn btn_secondary">重新整理分類索引</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page_shell">
+    <section class="overview panel" aria-labelledby="stats_title">
+      <h2 id="stats_title" class="section_title">分類概覽</h2>
+      <div id="stats_cards" class="stats_cards">載入中…</div>
+      <p id="external_verify_line" class="section_notice muted" aria-live="polite"></p>
+      <h3 class="subsection_title">年代分布</h3>
+      <div id="stats_decade_bars" class="decade_bars"></div>
+
+      <div class="preview_panel" id="preview_panel">
+        <h3 class="subsection_title">智慧歌單本機預覽</h3>
+        <p class="section_notice section_notice_preview">結果僅供本機參考，<strong>尚未同步 Spotify</strong>，不會建立或修改線上歌單。</p>
+        <div class="preview_mode_row">
+          <label class="field_label" for="preview_mode">預覽模式</label>
+          <select id="preview_mode" class="field_select preview_mode_select">
+            <option value="strict">嚴格（僅人工確認）</option>
+            <option value="balanced" selected>平衡（預設）</option>
+            <option value="relaxed">寬鬆（標示未確認風險）</option>
+          </select>
+          <button type="button" id="btn_preview_playlist" class="btn btn_secondary">依目前篩選預覽</button>
+        </div>
+        <div id="preview_result" class="preview_result muted">選擇篩選條件後按「依目前篩選預覽」。</div>
+      </div>
+    </section>
+
+    <section class="workspace" id="workspace" aria-label="主要工作區">
+      <div class="workspace_list panel" id="panel_list">
+        <h2 class="section_title">歌曲清單</h2>
+        <div class="ai_batch_row">
+          <label class="field_label" for="ai_test_batch">AI 測試批次</label>
+          <select id="ai_test_batch" class="field_select ai_batch_select"></select>
+          <p id="ai_batch_meta" class="ai_batch_meta muted"></p>
+        </div>
+
+        <div class="list_tabs" role="tablist" aria-label="清單模式">
+          <button type="button" id="tab_all" class="list_tab list_tab_active" role="tab" aria-selected="true">全部歌曲</button>
+          <button type="button" id="tab_ai" class="list_tab" role="tab" aria-selected="false">AI 待審核</button>
+          <button type="button" id="tab_quality" class="list_tab" role="tab" aria-selected="false">AI 品質驗證</button>
+        </div>
+
+        <p id="quality_audit_notice" class="section_notice quality_notice" hidden>
+          <strong>品質驗證（20 首抽樣）</strong>：此處標記「正確／部分正確／錯誤」僅供品質評估，<strong>不會</strong>寫入正式覆寫或自動接受 AI 分類。正式審核請使用「AI 待審核」。
+        </p>
+
+        <div id="quality_audit_filters" class="quality_filters" hidden>
+          <div class="filter_row">
+            <label class="field_label" for="quality_filter_tier">可信度</label>
+            <select id="quality_filter_tier" class="field_select">
+              <option value="">（全部）</option>
+              <option value="high">高可信度</option>
+              <option value="medium">中可信度</option>
+              <option value="low">低可信度</option>
+            </select>
+          </div>
+          <div class="filter_row">
+            <label class="field_label" for="quality_filter_verdict">驗證狀態</label>
+            <select id="quality_filter_verdict" class="field_select">
+              <option value="">（全部）</option>
+              <option value="unset">尚未驗證</option>
+              <option value="correct">正確</option>
+              <option value="partial">部分正確</option>
+              <option value="incorrect">錯誤</option>
+              <option value="undecidable">無法判斷</option>
+            </select>
+          </div>
+          <button type="button" id="btn_quality_apply_filter" class="btn btn_secondary btn_block">套用篩選</button>
+        </div>
+
+        <div id="quality_summary" class="quality_summary panel_inset" hidden aria-live="polite"></div>
+
+        <div class="search_block">
+          <label class="field_label" for="search_q">搜尋（歌名、藝人、Spotify ID）</label>
+          <input type="search" id="search_q" class="field_input" autocomplete="off">
+        </div>
+
+        <details class="filter_collapsible" id="filter_collapsible" open>
+          <summary class="filter_summary">篩選條件</summary>
+          <div class="filter_grid">
+            <div class="filter_row">
+              <label class="field_label" for="filter_decade">年代</label>
+              <select id="filter_decade" class="field_select"></select>
+            </div>
+            <div class="filter_row">
+              <label class="field_label" for="filter_language">語言</label>
+              <select id="filter_language" class="field_select"></select>
+            </div>
+            <div class="filter_row">
+              <label class="field_label" for="filter_genre">曲風（舊版標籤）</label>
+              <select id="filter_genre" class="field_select"></select>
+            </div>
+            <div class="filter_row">
+              <label class="field_label" for="filter_primary_genre">主曲風</label>
+              <select id="filter_primary_genre" class="field_select"></select>
+            </div>
+            <div class="filter_row">
+              <label class="field_label" for="filter_subgenre">子曲風</label>
+              <select id="filter_subgenre" class="field_select"></select>
+            </div>
+            <div class="filter_row">
+              <label class="field_label" for="filter_context">情境</label>
+              <select id="filter_context" class="field_select"></select>
+            </div>
+            <div class="filter_row">
+              <label class="field_label" for="filter_special_type">特殊標籤</label>
+              <select id="filter_special_type" class="field_select">
+                <option value="">（全部）</option>
+                <option value="電影／電視原聲帶">電影／電視原聲帶</option>
+                <option value="動漫">動漫</option>
+                <option value="遊戲音樂">遊戲音樂</option>
+                <option value="純音樂">純音樂</option>
+                <option value="現場演唱">現場演唱</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <button type="button" id="btn_search" class="btn btn_primary btn_block">套用篩選</button>
+
+        <div id="batch_toolbar" class="batch_toolbar" hidden>
+          <p id="batch_selection_meta" class="batch_selection_meta">已選 0 首</p>
+          <label class="batch_select_all">
+            <input type="checkbox" id="batch_select_all"> 全選目前清單（<span id="batch_scope_count">0</span> 首）
+          </label>
+          <div class="batch_actions">
+            <button type="button" id="btn_batch_accept" class="btn btn_secondary btn_sm">批次接受</button>
+            <button type="button" id="btn_batch_reject" class="btn btn_secondary btn_sm">批次拒絕</button>
+            <button type="button" id="btn_batch_pending" class="btn btn_secondary btn_sm">批次保留待審核</button>
+          </div>
+          <p class="batch_hint muted">僅限 v2 樣本 30 首；單次最多 30 首。</p>
+        </div>
+
+        <p id="search_result_meta" class="list_meta"></p>
+        <ul id="track_list" class="track_list"></ul>
+      </div>
+
+      <div class="workspace_detail panel" id="panel_detail">
+        <button type="button" id="btn_back_list" class="btn_back">← 返回歌曲清單</button>
+        <div id="track_detail" class="track_detail">
+          <p class="muted">請從左側清單選擇曲目，以查看正式分類與 AI 候選審核。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/ui_labels.js"></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>

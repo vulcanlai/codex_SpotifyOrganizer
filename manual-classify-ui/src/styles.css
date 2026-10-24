@@ -1,0 +1,391 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+  background: #0f1419;
+  color: #e7ecf1;
+  line-height: 1.5;
+}
+
+#app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 3rem;
+}
+
+h1 {
+  font-size: 1.35rem;
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.subtitle {
+  color: #9aa8b5;
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+.card {
+  background: #1a222c;
+  border: 1px solid #2a3542;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.card h2 {
+  font-size: 1rem;
+  margin: 0 0 0.75rem;
+}
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  color: #b8c4d0;
+  margin-bottom: 0.35rem;
+}
+
+textarea,
+input[type='text'],
+input[type='search'] {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid #3a4654;
+  background: #0f1419;
+  color: #e7ecf1;
+  font-size: 0.95rem;
+}
+
+textarea {
+  min-height: 88px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.btn_row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+}
+
+button.primary {
+  background: #1db954;
+  color: #041008;
+  font-weight: 600;
+}
+
+button.secondary {
+  background: #2a3542;
+  color: #e7ecf1;
+}
+
+button.danger {
+  background: #c0392b;
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.playlist_section_heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+}
+
+.playlist_toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.playlist_toolbar input {
+  flex: 1 1 200px;
+}
+
+.selected_count {
+  font-size: 0.85rem;
+  color: #1db954;
+}
+
+.playlist_selected_zone {
+  border: 1px solid #2a3542;
+  border-radius: 8px;
+  padding: 0.35rem;
+  margin-bottom: 0.5rem;
+  background: #151b22;
+}
+
+.playlist_list {
+  border: 1px solid #2a3542;
+  border-radius: 8px;
+  padding: 0.35rem;
+}
+
+.playlist_list_scroll {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.playlist_search_empty {
+  margin: 0.5rem 0.35rem;
+  font-size: 0.85rem;
+  color: #9aa8b5;
+}
+
+.playlist_item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0.35rem;
+  border-radius: 6px;
+}
+
+.playlist_item:hover {
+  background: #222b36;
+}
+
+.playlist_item_selected {
+  background: #1a2620;
+  border-left: 3px solid #1db954;
+  padding-left: calc(0.35rem - 3px);
+}
+
+.playlist_item_selected:hover {
+  background: #1e2e26;
+}
+
+.playlist_selected_mark {
+  display: inline-block;
+  margin-right: 0.35rem;
+  color: #1db954;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+.playlist_group_title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8a98a8;
+  padding: 0.45rem 0.35rem 0.2rem;
+  letter-spacing: 0.02em;
+}
+
+.id_type_choice {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  background: #222b36;
+  border: 1px solid #3a4654;
+  font-size: 0.88rem;
+}
+
+.id_type_label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #ffd48a;
+}
+
+.id_type_option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: 1rem;
+  cursor: pointer;
+}
+
+.playlist_item input {
+  margin-top: 0.25rem;
+}
+
+.playlist_meta {
+  font-size: 0.75rem;
+  color: #8a98a8;
+}
+
+.warn,
+.error,
+.ok_msg {
+  font-size: 0.88rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+.warn {
+  background: #3d3018;
+  color: #ffd48a;
+}
+
+.error {
+  background: #3a1c1c;
+  color: #ffb4b4;
+}
+
+.ok_msg {
+  background: #143322;
+  color: #8ef0b8;
+}
+
+.preview_summary {
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  background: #151b22;
+  border-radius: 8px;
+  border: 1px solid #2a3542;
+}
+
+.preview_summary_sep {
+  color: #5a6672;
+  margin: 0 0.25rem;
+}
+
+.preview_status_neutral {
+  font-size: 0.88rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: #222b36;
+  margin-bottom: 0.5rem;
+}
+
+.preview_track_list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.preview_track_card {
+  border: 1px solid #2a3542;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  background: #151b22;
+}
+
+.preview_track_card_done {
+  border-color: #1a3d2a;
+  background: #121a16;
+}
+
+.preview_track_title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.preview_track_artists,
+.preview_track_album {
+  margin: 0.15rem 0;
+  font-size: 0.85rem;
+  color: #b8c4d0;
+}
+
+.preview_track_meta_hint {
+  margin: 0.2rem 0;
+  font-size: 0.82rem;
+  color: #9aa8b5;
+}
+
+.preview_track_status {
+  margin: 0.35rem 0;
+  font-size: 0.82rem;
+}
+
+.status_done {
+  color: #6fcf97;
+  margin-right: 0.5rem;
+}
+
+.status_pending {
+  color: #ffd48a;
+  margin-right: 0.5rem;
+}
+
+.preview_pl_block {
+  margin: 0.25rem 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.preview_pl_label {
+  color: #8a98a8;
+  margin-right: 0.25rem;
+}
+
+.badge_ok {
+  background: #1a3d2a;
+  color: #8ef0b8;
+}
+
+.badge_pending {
+  background: #3d3018;
+  color: #ffd48a;
+}
+
+.preview_track_details {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: #8a98a8;
+}
+
+.preview_track_details code {
+  word-break: break-all;
+}
+
+.track_table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.track_table th,
+.track_table td {
+  border-bottom: 1px solid #2a3542;
+  padding: 0.35rem 0.25rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: #2a3542;
+  margin-right: 0.25rem;
+}
+
+.sync_note {
+  font-size: 0.85rem;
+  color: #9aa8b5;
+}
+
+@media (max-width: 600px) {
+  #app {
+    padding: 0.75rem;
+  }
+
+  .track_table {
+    font-size: 0.75rem;
+  }
+}

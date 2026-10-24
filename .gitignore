@@ -1,0 +1,36 @@
+# 依賴與環境
+node_modules/
+.env
+.env.*
+!.env.example
+
+# OAuth Token（本機保存，勿提交）
+.spotify_tokens.json
+data/
+*.token.json
+
+# 使用者離線匯入貼上（含 Spotify track URL）
+imports/*
+!imports/README.md
+
+# 備份與暫存
+backup/
+*.bak
+*.backup
+/tmp/
+
+# 建置產物（npm run manual:classify:ui:build 可再生；本機保留供 UI 使用）
+public/manual-classify-ui/
+
+# 執行期 lock
+.enrich.lock
+
+# Cursor 本機設定（保留共用 rules/）
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# 系統與編輯器
+.DS_Store
+Thumbs.db
+*.log

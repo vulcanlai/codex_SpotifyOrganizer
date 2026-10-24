@@ -1,0 +1,41 @@
+---
+description: 跨電腦交接 — 先讀文件與 JSON 錨點，任務後更新 PROJECT_HANDOFF.md
+alwaysApply: true
+---
+
+# SpotifyOrganizer 專案交接
+
+## 開始任務
+
+1. 讀 `README.md`（操作與 G3 章節）與根目錄 **`PROJECT_HANDOFF.md`**。
+2. 依任務讀 **進度錨點 JSON**（見 HANDOFF §10），例如 `g3-f1-wave-100/`～`g3-f5-wave-100/` 的 `offline-summary.json`、`batch-progress.json`。
+3. **專案檔案優先於聊天記憶**；勿假設另一台 Cursor 的對話內容。
+
+## API 與本機工作切換
+
+- **API 可用**（無全域 Track API 冷卻、token 有效）時，優先處理需 Spotify **GET /tracks** 的 metadata enrichment（`enrich:tracks`／`enrich:auto`）。
+- 遇到 **429**：遵守 `Retry-After`；`rate-limit-state.json` 冷卻中**不得**跑 enrichment／`probe:tracks`。
+- **等待期間**改做不需外部 API 的工作：G3-F wave（prepare／Agent／run 離線段）、validate／QC、`classify:build`、G3 對帳（`*-reconcile-dry`）、文件／功能開發。
+- 本機段落完成後**重新讀** `rate-limit-state.json`、`auto-run-summary.json`／`enrichment/summary.json`；`retry_not_before` 已過**不代表** Spotify 已解除限流，需以小批 `--resume` 實測。
+- 每次開工先對帳進度錨點（HANDOFF §10、§5），不沿用聊天或過期判斷。
+- 切換工作時**不可**中斷進行中的原子寫入；勿並行 enrichment（`.enrich.lock`）；Ctrl+C 後待 checkpoint 寫完再改做其他寫入任務。
+
+## 分類與安全
+
+- **staged candidate ≠ 正式採用**；adopt overlay 預設 **disabled**。
+- 文件與 JSON 不一致時：**先對帳**（如 `npm run g3:f2-reconcile-dry` 或 `g3:f1-reconcile-dry`），不得 silent 覆寫分類或重跑已完成 wave 的 prepare（F.2 已 staged 時 `g3:f2-prepare` 會略過寫入）。
+- Agent 推理只寫 `agent-outputs/`；禁止規則／硬編 JS 冒充 infer。
+- validate 若需改 Agent JSON：保留原始副本 + 寫 `validation-corrections-log.json`（見 HANDOFF §9）。
+
+## 結束任務
+
+- 更新 **`PROJECT_HANDOFF.md`**：§5 數字、§6 下一步、§11 測試（若有跑）、已知問題。
+- 除非使用者要求，勿 Git commit/push。
+
+## 繁體中文
+
+- Agent 與 Subagent 對使用者的中文回覆一律使用**台灣繁體中文**。
+- README、PROJECT_HANDOFF、程式註解、`reason_zh`、QC 報告使用繁體中文。
+- 原始歌曲名稱、藝人、專輯名稱保持原貌，不擅自轉換文字。
+- JSON key、enum、程式變數與檔案路徑保持原樣。
+- 不批次修改歷史分類 JSON。
