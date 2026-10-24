@@ -1,0 +1,61 @@
+---
+description: Git／GitLab 安全作業 — status 優先、最小 diff、禁止 push 與敏感資料入庫
+alwaysApply: true
+---
+
+# SpotifyOrganizer Git 工作規則
+
+遠端：`git@gitlab.com:vulcanlai/SpotifyOrganizer.git`，預設分支 **`main`**。
+本機 SSH 由使用者以 TortoiseGitPlink + Pageant 管理；Agent **不得**改 remote、SSH 或 `user.name`／`user.email`。
+
+GitLab 只版控**程式碼與共用文件**。Spotify 曲庫、`backup/`、`manual-overrides`、`sync-manifest` 及正式分類產物須**獨立備份**，不可依賴 push 同步。
+
+## 開始修改前
+
+1. 執行 **`git status --short`**，確認工作目錄是否已有使用者手動修改。
+2. 若存在與本次需求**無關**的變更：**保留不動**，並在回報中列出（路徑與狀態即可）。
+3. **不得**擅自覆蓋、還原（checkout／restore）或刪除使用者原有修改。
+
+## 修改範圍
+
+- 只改當次需求涉及的檔案；不順手重構、不擴大 scope。
+- 保留既有架構、命名與可讀性；與 `project-handoff.mdc` 的分類／API 安全規則一併遵守。
+
+## 修改完成後回報
+
+- 變更檔案清單、簡短修改摘要。
+- 若有跑測試：說明指令與結果；未跑則明確標示「未執行測試」。
+
+## Commit 與 Push
+
+- **未經使用者明確要求，不得 `git commit`。**
+- 使用者要求 commit 時：
+  1. 先看 **`git diff`** 與 **`git diff --cached`**（或 `git status`）確認 staged 僅含本次同意項目。
+  2. **禁止** `git add .` 無腦全加；依路徑分段 `git add`。
+  3. 訊息：簡短繁體中文 + Conventional 前綴（`feat:`、`fix:`、`chore:`、`docs:`、`refactor:` 等）。
+- **未經使用者明確要求，絕對不得 `git push`**（含 `-u origin main`）。
+
+## 禁止的 Git 操作
+
+- `git reset --hard`、`git clean -fd`、force push、`git push --force`、rebase 改寫已推送歷史。
+- `git add -f` 強制加入被 `.gitignore` 排除的檔案。
+- 擅自修改 `git remote`、SSH 金鑰設定或 Git 使用者身分。
+
+## 不得納入版控的資料
+
+下列內容**不得** commit（以 `.gitignore` 為準，提交前用 `git check-ignore -v` 抽查）：
+
+- `.env`、`.env.*`（**除外**：`.env.example` 等無密鑰範本）
+- `.spotify_tokens.json`、`*.token.json`、OAuth／密碼／金鑰／憑證檔
+- `backup/`、`data/`
+- `reports/`（QC、adopt dry-run、draft overrides、曲庫稽核等）
+- 各層級 `node_modules/`
+- `public/manual-classify-ui/`（建置產物；本機保留供 UI 使用，以 `npm run manual:classify:ui:build` 再生）
+- `imports/*` 使用者貼上內容（**除外**：`imports/README.md`）
+- 暫存、log、執行期 lock（如 `.enrich.lock`、`*.log`）
+
+## 與交接規則的關係
+
+- `project-handoff.mdc`：任務錨點、分類安全、結束時更新 HANDOFF。
+- 本規則：Git 操作細節與敏感資料邊界。
+- 兩者衝突時，**資料安全與使用者手動修改**優先；commit／push 皆需使用者明示。
