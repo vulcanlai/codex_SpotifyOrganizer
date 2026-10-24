@@ -19,6 +19,7 @@
   var quality_audit_items = [];
   var quality_selected_id = null;
   var quality_audit_status = null;
+  var local_ui_csrf_token = '';
 
   var QUALITY_VERDICT_LABELS = {
     unset: '尚未驗證',
@@ -43,8 +44,32 @@
   var el_detail = document.getElementById('track_detail');
   var el_workspace = document.getElementById('workspace');
 
+  function load_csrf_token() {
+    return fetch('/api/csrf')
+      .then(function (res) {
+        return res.json().then(function (data) {
+          if (!res.ok) {
+            throw new Error(data.error || 'CSRF 載入失敗');
+          }
+          local_ui_csrf_token = data.csrf_token || '';
+        });
+      });
+  }
+
   function fetch_json(url, options) {
-    return fetch(url, options || {}).then(function (res) {
+    var opts = options ? options : {};
+    var method = (opts.method || 'GET').toUpperCase();
+    var headers = opts.headers ? Object.assign({}, opts.headers) : {};
+    if (
+      method === 'POST' ||
+      method === 'PUT' ||
+      method === 'PATCH' ||
+      method === 'DELETE'
+    ) {
+      headers['X-Local-Ui-Csrf'] = local_ui_csrf_token;
+    }
+    opts.headers = headers;
+    return fetch(url, opts).then(function (res) {
       return res.json().then(function (data) {
         if (!res.ok) {
           throw new Error(data.error || '請求失敗');
@@ -2071,7 +2096,13 @@
     });
   }
 
-  load_taxonomy()
+  load_csrf_token()
+    .catch(function (err) {
+      show_error(err);
+    })
+    .then(function () {
+      return load_taxonomy();
+    })
     .catch(function () {
       return null;
     })

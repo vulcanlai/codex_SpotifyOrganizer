@@ -8,9 +8,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { handle_classification_api } from './lib/classification/web_handlers.js';
+import {
+  create_local_ui_api_security_state,
+  apply_local_ui_api_guard_http,
+} from './lib/local_ui/local_ui_api_security.js';
 
 export const CLASSIFY_UI_HOST = '127.0.0.1';
 export const CLASSIFY_UI_PORT = 8891;
+
+export const classify_local_ui_security = create_local_ui_api_security_state({
+  port: CLASSIFY_UI_PORT,
+  extra_dev_origin_ports: [],
+});
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public', 'classify');
@@ -59,6 +68,9 @@ async function handle_request(req, res) {
   const pathname = url.pathname;
 
   if (pathname.indexOf('/api/') === 0) {
+    if (apply_local_ui_api_guard_http(req, res, pathname, classify_local_ui_security)) {
+      return;
+    }
     try {
       const body_text =
         req.method === 'POST' || req.method === 'PUT'

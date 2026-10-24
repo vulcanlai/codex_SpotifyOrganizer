@@ -6,6 +6,7 @@
     playlists: [],
     selected_id: null,
   };
+  var local_ui_csrf_token = '';
 
   var el_select = document.getElementById('playlist_select');
   var el_info = document.getElementById('playlist_info');
@@ -39,10 +40,22 @@
     xhr.send();
   }
 
+  function load_csrf(cb) {
+    api_get('/api/csrf', function (err, data) {
+      if (!err && data) {
+        local_ui_csrf_token = data.csrf_token || '';
+      }
+      cb(err);
+    });
+  }
+
   function api_post(path, payload, cb) {
     var xhr = new XMLHttpRequest();
     xhr.open('POST', path, true);
     xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+    if (local_ui_csrf_token) {
+      xhr.setRequestHeader('X-Local-Ui-Csrf', local_ui_csrf_token);
+    }
     xhr.onreadystatechange = function () {
       if (xhr.readyState !== 4) {
         return;
@@ -260,5 +273,10 @@
     });
   });
 
-  load_status();
+  load_csrf(function (err) {
+    if (err) {
+      show_message(err.message, 'error');
+    }
+    load_status();
+  });
 })();

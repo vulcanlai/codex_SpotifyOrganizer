@@ -238,6 +238,8 @@ const apply_result = ref(null);
 const apply_busy = ref(false);
 const loading = ref(false);
 const error_message = ref('');
+const csrf_token = ref('');
+
 const sync = ref({
   local_classification_ready: true,
   spotify_sync_via_web_ui: false,
@@ -382,6 +384,18 @@ function kind_label(kind) {
   return '語言×曲風';
 }
 
+async function ensure_csrf_token() {
+  if (csrf_token.value) {
+    return;
+  }
+  const res = await fetch('/api/csrf');
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message_zh || data.error || 'csrf_failed');
+  }
+  csrf_token.value = data.csrf_token || '';
+}
+
 async function api_get(path) {
   const res = await fetch(path);
   const data = await res.json();
@@ -392,9 +406,13 @@ async function api_get(path) {
 }
 
 async function api_post(path, body) {
+  await ensure_csrf_token();
   const res = await fetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Local-Ui-Csrf': csrf_token.value,
+    },
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -465,6 +483,9 @@ async function run_apply() {
 }
 
 onMounted(function () {
+  ensure_csrf_token().catch(function () {
+    /* 首次 POST 前仍會再取 */
+  });
   load_playlists().catch(function (e) {
     error_message.value = e.message || String(e);
   });
