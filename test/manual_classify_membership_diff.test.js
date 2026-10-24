@@ -18,7 +18,6 @@ import {
   run_manual_classify_preview,
   format_manual_classify_preview_for_ui,
   reset_manual_classify_apply_state_for_tests,
-  compute_manual_classify_preview_token,
 } from '../lib/classification/manual_classify/manual_classify_web_service.js';
 import { empty_overrides_doc } from '../lib/classification/overrides_store.js';
 import { merge_track_override_patch } from '../lib/classification/manual_classify/override_patch.js';
@@ -170,11 +169,12 @@ test('6. stale fingerprint 拒絕寫入', function () {
     spotify_id_kind: 'track',
     playlist_ids: [PL_A],
   };
-  const token = compute_manual_classify_preview_token(body);
+  const prev = run_manual_classify_preview(body);
+  assert.equal(prev.ok, true);
   const res = run_manual_classify_apply({
     confirm: true,
-    preview_token: token,
-    overrides_fingerprint: 'deadbeef',
+    preview_token: prev.preview_token,
+    overrides_fingerprint: 'deadbeef000000000000000000000000000000000000000000000000000000',
     request: body,
   });
   assert.equal(res.error, 'stale_preview');
