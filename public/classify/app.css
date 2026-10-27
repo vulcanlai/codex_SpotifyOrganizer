@@ -20,6 +20,7 @@
   --page_max: 1520px;
   --space_form_gap: 0.875rem;
   --space_block_gap: 1.375rem;
+  --track_row_min_height: 4.25rem;
 }
 
 * {
@@ -192,6 +193,10 @@ body {
 .workspace_list,
 .workspace_detail {
   min-width: 0;
+}
+
+.workspace_list {
+  container-type: inline-size;
 }
 
 .list_tabs {
@@ -371,6 +376,52 @@ body {
   display: flex;
   align-items: stretch;
   gap: 0.5rem;
+  min-height: var(--track_row_min_height);
+}
+
+.pagination {
+  margin-top: var(--space_sm);
+}
+
+.pagination_full,
+.pagination_compact {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space_xs);
+}
+
+.pagination_compact {
+  display: none;
+}
+
+.pagination_btn {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--color_border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--color_text);
+  cursor: pointer;
+}
+
+.pagination_btn[aria-current="page"] {
+  border-color: var(--color_spotify);
+  background: #ecfdf3;
+  color: var(--color_spotify_dark);
+  font-weight: 700;
+}
+
+.pagination_btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pagination_ellipsis,
+.pagination_status {
+  white-space: nowrap;
+  font-size: var(--font_sm);
 }
 
 .track_list_cb {
@@ -908,12 +959,18 @@ body {
 
   .workspace {
     flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .workspace.workspace_has_selection {
     align-items: stretch;
   }
 
   .workspace_list {
     flex: 0 0 var(--list_width);
     max-width: var(--list_width);
+    display: flex;
+    flex-direction: column;
   }
 
   .workspace_detail {
@@ -922,7 +979,8 @@ body {
   }
 
   .track_list {
-    max-height: min(58vh, 720px);
+    min-height: calc(20 * var(--track_row_min_height) + 2px);
+    max-height: max(calc(20 * var(--track_row_min_height) + 2px), min(58vh, 720px));
   }
 }
 
@@ -935,11 +993,18 @@ body {
   .workspace {
     flex-direction: row;
     gap: var(--space_md);
+    align-items: flex-start;
+  }
+
+  .workspace.workspace_has_selection {
+    align-items: stretch;
   }
 
   .workspace_list {
     flex: 0 0 42%;
     max-width: 42%;
+    display: flex;
+    flex-direction: column;
   }
 
   .workspace_detail {
@@ -949,6 +1014,11 @@ body {
 
   .filter_collapsible:not([open]) .filter_grid {
     display: none;
+  }
+
+  .track_list {
+    min-height: calc(20 * var(--track_row_min_height) + 2px);
+    max-height: calc(20 * var(--track_row_min_height) + 2px);
   }
 }
 
@@ -960,6 +1030,24 @@ body {
 
   .btn_row_actions .btn {
     min-width: 6.5rem;
+  }
+}
+
+/* 已選曲目的桌機工作區：由右側內容決定列高，清單吸收左側剩餘空間。 */
+@media (min-width: 768px) {
+  .workspace.workspace_has_selection .workspace_list {
+    align-self: stretch;
+  }
+
+  .workspace.workspace_has_selection .track_list {
+    flex: 1 1 0;
+    height: 0;
+    min-height: calc(20 * var(--track_row_min_height) + 2px);
+    max-height: none;
+  }
+
+  .workspace.workspace_has_selection .pagination {
+    flex: 0 0 auto;
   }
 }
 
@@ -1002,7 +1090,15 @@ body {
   }
 
   .track_list {
-    max-height: none;
+    max-height: min(65vh, 42rem);
+  }
+
+  .pagination_full {
+    display: none;
+  }
+
+  .pagination_compact {
+    display: flex;
   }
 }
 
@@ -1050,11 +1146,6 @@ body {
   display: inline-block;
   margin: 0 var(--space_sm) var(--space_xs) 0;
   font-size: var(--font_sm);
-}
-
-.track_list_item_active {
-  outline: 2px solid var(--color_spotify);
-  outline-offset: -2px;
 }
 
 @media (max-width: 480px) {

@@ -1,5 +1,6 @@
 (function () {
   var L = window.ClassifyUiLabels;
+  var Pagination = window.ClassifyPaginationModel;
   var summary_data = null;
   var ai_status = null;
   var ai_candidate_version = 2;
@@ -10,6 +11,8 @@
   var ai_id_map = {};
   var ai_form_snapshot = '';
   var ai_form_dirty = false;
+  var override_form_snapshot = '';
+  var override_form_dirty = false;
   var genre_taxonomy = null;
   var ai_selected_ids = {};
   var preview_settings = null;
@@ -20,6 +23,12 @@
   var quality_selected_id = null;
   var quality_audit_status = null;
   var local_ui_csrf_token = '';
+  var current_page = 1;
+  var page_by_mode = { all: 1, ai: 1, quality: 1 };
+  var current_total = 0;
+  var page_size = 100;
+  var pagination_radius = 1;
+  var search_request_gate = Pagination.create_request_gate();
 
   var QUALITY_VERDICT_LABELS = {
     unset: '尚未驗證',
@@ -41,6 +50,7 @@
   var el_system_status = document.getElementById('system_status');
   var el_search_meta = document.getElementById('search_result_meta');
   var el_track_list = document.getElementById('track_list');
+  var el_pagination = document.getElementById('track_pagination');
   var el_detail = document.getElementById('track_detail');
   var el_workspace = document.getElementById('workspace');
 
@@ -474,7 +484,14 @@
     }
   }
 
-  function run_search() {
+  function run_search(reset_page, locate_track_id) {
+    if (reset_page) {
+      page_by_mode.all = 1;
+      if (list_mode === 'all') {
+        current_page = 1;
+      }
+    }
+    var search_page = page_by_mode.all;
     var params = new URLSearchParams();
     var q = document.getElementById('search_q').value.trim();
     if (q) {
@@ -504,13 +521,39 @@
     if (subgenre) {
       params.set('subgenre', subgenre);
     }
-    params.set('limit', '80');
+    if (locate_track_id) {
+      params.set('locate_track_id', locate_track_id);
+      params.set('locate_page', '1');
+    }
+    params.set('limit', String(page_size));
+    params.set('offset', String((search_page - 1) * page_size));
+    var request_id = search_request_gate.next();
     return fetch_json('/api/tracks?' + params.toString()).then(function (data) {
+      if (!search_request_gate.is_current(request_id)) {
+        return;
+      }
       search_items = data.items || [];
+      current_total = data.total || 0;
+      var located = typeof data.located_index === 'number' && data.located_index >= 0;
+      var valid_page = located
+        ? Math.floor(data.located_index / page_size) + 1
+        : Pagination.clamp_page(search_page, current_total, page_size);
+      page_by_mode.all = valid_page;
+      if (valid_page !== search_page) {
+        if (list_mode === 'all') current_page = valid_page;
+        if (!located) {
+          return run_search(false);
+        }
+      }
       if (list_mode === 'all') {
+        current_page = valid_page;
         el_search_meta.textContent =
-          '符合 ' + data.total + ' 首（顯示 ' + data.items.length + ' 首）';
+          '符合 ' + data.total + ' 首（本頁 ' + data.items.length + ' 首）';
         render_track_list(search_items, false);
+        render_pagination();
+        if (located) {
+          schedule_scroll_track_into_list(locate_track_id);
+        }
       }
     });
   }
@@ -536,6 +579,9 @@
     }
     if (list_mode === 'ai') {
       var pending = get_ai_pending_items();
+      current_total = pending.length;
+      clamp_current_page();
+      var page_items = paginate_items(pending);
       el_search_meta.textContent =
         (ai_candidate_version === 2 ? 'AI 新版待審核 ' : 'AI 待審核 ') +
         pending.length +
@@ -544,10 +590,13 @@
         ' 樣本共 ' +
         ai_items.length +
         ' 首）';
-      render_track_list(pending, true);
+      render_track_list(page_items, true);
+      render_pagination();
       return;
     }
+    current_total = current_total || search_items.length;
     render_track_list(search_items, false);
+    render_pagination();
   }
 
   function quality_filter_params() {
@@ -567,6 +616,8 @@
     return fetch_json('/api/quality-audit/tracks' + quality_filter_params()).then(
       function (data) {
         quality_audit_items = data.items || [];
+        current_total = quality_audit_items.length;
+        clamp_current_page();
         return fetch_json('/api/quality-audit/status');
       }
     ).then(function (status) {
@@ -617,42 +668,168 @@
       quality_audit_status &&
       quality_audit_status.report_summary &&
       quality_audit_status.report_summary.verification_progress;
+    current_total = quality_audit_items.length;
+    clamp_current_page();
+    var page_items = paginate_items(quality_audit_items);
     el_search_meta.textContent =
       '品質驗證抽樣 ' +
       quality_audit_items.length +
       ' 首' +
       (prog ? '（已驗證 ' + prog.reviewed + '／' + prog.total + '）' : '');
-    for (var i = 0; i < quality_audit_items.length; i += 1) {
-      var item = quality_audit_items[i];
+    for (var i = 0; i < page_items.length; i += 1) {
+      var item = page_items[i];
       var li = document.createElement('li');
       li.className = 'track_list_item';
-      if (item.spotify_id === quality_selected_id) {
-        li.className += ' track_list_item_active';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'track_list_btn';
+      btn.setAttribute('data-id', item.spotify_id);
+      if (item.spotify_id === selected_track_id) {
+        btn.className += ' track_list_btn_active';
       }
-      var title =
-        (item.display && item.display.name) || item.spotify_id;
-      var artists = item.display && item.display.artists
-        ? item.display.artists.join('、')
-        : '';
+      var title = document.createElement('div');
+      title.className = 'track_title';
+      title.textContent = display_track_title(item);
       var verdict = item.quality_review ? item.quality_review.verdict : 'unset';
-      li.innerHTML =
-        '<span class="track_list_title">' +
-        escape_html(title) +
-        '</span>' +
-        '<span class="track_list_sub">' +
-        escape_html(artists) +
+      var sub = document.createElement('div');
+      sub.className = 'track_sub';
+      var id_span = document.createElement('span');
+      id_span.className = 'track_spotify_id';
+      id_span.textContent = item.spotify_id;
+      var status_span = document.createElement('span');
+      status_span.textContent =
+        '· ' +
+        L.format_confidence_tier(item.confidence_tier, { short: true }) +
         ' · ' +
-        escape_html(L.format_confidence_tier(item.confidence_tier, { short: true })) +
-        ' · ' +
-        escape_html(QUALITY_VERDICT_LABELS[verdict] || verdict) +
-        '</span>';
-      li.addEventListener('click', function (id) {
+        (QUALITY_VERDICT_LABELS[verdict] || verdict);
+      sub.appendChild(id_span);
+      sub.appendChild(status_span);
+      btn.appendChild(title);
+      btn.appendChild(sub);
+      btn.addEventListener('click', function (id) {
         return function () {
           select_quality_track(id);
         };
       }(item.spotify_id));
+      li.appendChild(btn);
       el_track_list.appendChild(li);
     }
+    if (!page_items.length) {
+      el_track_list.innerHTML = '<li class="list_empty muted">沒有符合的歌曲</li>';
+    }
+    el_track_list.scrollTop = 0;
+    render_pagination();
+  }
+
+  function page_count() {
+    return Pagination.page_count(current_total, page_size);
+  }
+
+  function clamp_current_page() {
+    current_page = Pagination.clamp_page(current_page, current_total, page_size);
+    page_by_mode[list_mode] = current_page;
+  }
+
+  function paginate_items(items) {
+    return Pagination.slice_page(items, current_page, page_size);
+  }
+
+  function pagination_pages(total_pages, radius) {
+    return Pagination.visible_pages(total_pages, current_page, radius);
+  }
+
+  function pagination_button(label, page, disabled, extra_class, current) {
+    return '<button type="button" class="pagination_btn ' + (extra_class || '') +
+      '" data-page="' + page + '"' + (disabled ? ' disabled' : '') +
+      (current ? ' aria-current="page"' : '') + '>' + label + '</button>';
+  }
+
+  function render_pagination() {
+    if (!el_pagination) return;
+    var total_pages = page_count();
+    if (current_total <= page_size) {
+      el_pagination.innerHTML = '';
+      el_pagination.hidden = true;
+      return;
+    }
+    el_pagination.hidden = false;
+    pagination_radius = el_pagination.clientWidth >= 520 ? 2 : 1;
+    var html = '<div class="pagination_full">';
+    html += pagination_button('上一頁', current_page - 1, current_page === 1, '', false);
+    var pages = pagination_pages(total_pages, pagination_radius);
+    for (var i = 0; i < pages.length; i += 1) {
+      if (typeof pages[i] === 'string') {
+        html += '<span class="pagination_ellipsis" aria-hidden="true">…</span>';
+      } else {
+        html += pagination_button(String(pages[i]), pages[i], false, 'pagination_number', pages[i] === current_page);
+      }
+    }
+    html += pagination_button('下一頁', current_page + 1, current_page === total_pages, '', false);
+    html += '</div><div class="pagination_compact">';
+    html += pagination_button('上一頁', current_page - 1, current_page === 1, '', false);
+    html += '<span class="pagination_status">第 ' + current_page + ' / ' + total_pages + ' 頁</span>';
+    html += pagination_button('下一頁', current_page + 1, current_page === total_pages, '', false);
+    html += '</div>';
+    el_pagination.innerHTML = html;
+  }
+
+  function change_page(page) {
+    var next = Math.min(Math.max(1, page), page_count());
+    if (next === current_page || !confirm_leave_if_dirty()) return;
+    current_page = next;
+    page_by_mode[list_mode] = current_page;
+    if (list_mode === 'all') {
+      run_search(false).catch(show_error);
+    } else {
+      render_current_list();
+    }
+  }
+
+  function find_track_index(items, track_id) {
+    if (!track_id) return -1;
+    for (var i = 0; i < items.length; i += 1) {
+      if (items[i].spotify_id === track_id) return i;
+    }
+    return -1;
+  }
+
+  function scroll_track_into_list(track_id) {
+    if (!track_id) return;
+    var rows = el_track_list.querySelectorAll('[data-id]');
+    var target = null;
+    for (var i = 0; i < rows.length; i += 1) {
+      if (rows[i].getAttribute('data-id') === track_id) {
+        target = rows[i];
+        break;
+      }
+    }
+    if (!target) return;
+    var list_rect = el_track_list.getBoundingClientRect();
+    var target_rect = target.getBoundingClientRect();
+    if (target_rect.top < list_rect.top) {
+      el_track_list.scrollTop -= list_rect.top - target_rect.top;
+    } else if (target_rect.bottom > list_rect.bottom) {
+      el_track_list.scrollTop += target_rect.bottom - list_rect.bottom;
+    }
+  }
+
+  function schedule_scroll_track_into_list(track_id) {
+    var schedule = window.requestAnimationFrame || function (callback) {
+      window.setTimeout(callback, 0);
+    };
+    schedule(function () {
+      scroll_track_into_list(track_id);
+    });
+  }
+
+  function locate_selected_in_client_list(items) {
+    var index = find_track_index(items, selected_track_id);
+    if (index < 0) return false;
+    current_page = Math.floor(index / page_size) + 1;
+    page_by_mode[list_mode] = current_page;
+    render_current_list();
+    schedule_scroll_track_into_list(selected_track_id);
+    return true;
   }
 
   function select_quality_track(track_id) {
@@ -661,6 +838,7 @@
     }
     quality_selected_id = track_id;
     selected_track_id = track_id;
+    el_workspace.classList.add('workspace_has_selection');
     render_quality_track_list();
     fetch_json(
       '/api/quality-audit/track/' + encodeURIComponent(track_id)
@@ -923,6 +1101,7 @@
     if (!items.length) {
       el_track_list.innerHTML = '<li class="list_empty muted">沒有符合的歌曲</li>';
     }
+    el_track_list.scrollTop = 0;
   }
 
   function count_selected_in_scope(items) {
@@ -969,7 +1148,7 @@
   }
 
   function current_ai_list_items() {
-    return get_ai_pending_items();
+    return paginate_items(get_ai_pending_items());
   }
 
   function run_batch_review(action) {
@@ -1197,10 +1376,10 @@
   }
 
   function confirm_leave_if_dirty() {
-    if (!ai_form_dirty) {
+    if (!ai_form_dirty && !override_form_dirty) {
       return true;
     }
-    return window.confirm('尚有未提交的 AI 修改，確定要切換歌曲嗎？');
+    return window.confirm('尚有未儲存的分類修改，確定要離開目前歌曲嗎？');
   }
 
   function select_track(track_id) {
@@ -1208,7 +1387,9 @@
       return Promise.resolve();
     }
     selected_track_id = track_id;
+    el_workspace.classList.add('workspace_has_selection');
     ai_form_dirty = false;
+    override_form_dirty = false;
     render_current_list();
 
     if (ai_id_map[track_id]) {
@@ -1769,6 +1950,30 @@
     if (!btn_save) {
       return;
     }
+    var override_fields = el_detail.querySelectorAll(
+      '#ov_primary_genre, #ov_secondary_wrap input, #ov_subgenres, #ov_language, #ov_genre, #ov_context, #ov_special'
+    );
+    function capture_override_form_snapshot() {
+      var values = [];
+      for (var i = 0; i < override_fields.length; i += 1) {
+        values.push(
+          override_fields[i].type === 'checkbox'
+            ? String(override_fields[i].checked)
+            : Array.prototype.map.call(override_fields[i].selectedOptions || [], function (o) { return o.value; }).join(',') || override_fields[i].value
+        );
+      }
+      return values.join('|');
+    }
+    override_form_snapshot = capture_override_form_snapshot();
+    override_form_dirty = false;
+    for (var f = 0; f < override_fields.length; f += 1) {
+      override_fields[f].addEventListener('change', function () {
+        override_form_dirty = capture_override_form_snapshot() !== override_form_snapshot;
+      });
+      override_fields[f].addEventListener('input', function () {
+        override_form_dirty = capture_override_form_snapshot() !== override_form_snapshot;
+      });
+    }
     btn_save.addEventListener('click', function () {
       var body = {
         spotify_id: track.spotify_id,
@@ -1800,6 +2005,7 @@
         body: JSON.stringify(body),
       })
         .then(function (data) {
+          override_form_dirty = false;
           show_toast('人工覆寫已保存', false);
           summary_data = data.summary;
           render_overview(summary_data);
@@ -1818,6 +2024,7 @@
         body: JSON.stringify({ spotify_id: track.spotify_id, clear: true }),
       })
         .then(function (data) {
+          override_form_dirty = false;
           show_toast('已清除此曲覆寫', false);
           summary_data = data.summary;
           render_overview(summary_data);
@@ -1969,7 +2176,12 @@
   }
 
   function set_list_mode(mode) {
+    if (mode === list_mode || !confirm_leave_if_dirty()) {
+      return;
+    }
+    page_by_mode[list_mode] = current_page;
     list_mode = mode;
+    current_page = page_by_mode[mode] || 1;
     document.getElementById('tab_all').className =
       'list_tab' + (mode === 'all' ? ' list_tab_active' : '');
     document.getElementById('tab_ai').className =
@@ -1993,14 +2205,26 @@
     );
     toggle_quality_mode_ui(mode === 'quality');
     if (mode === 'quality') {
-      load_quality_audit_tracks().catch(show_error);
+      load_quality_audit_tracks()
+        .then(function () {
+          locate_selected_in_client_list(quality_audit_items);
+        })
+        .catch(show_error);
       return;
     }
-    render_current_list();
+    if (mode === 'all') {
+      run_search(false, selected_track_id).catch(show_error);
+      return;
+    }
+    if (!locate_selected_in_client_list(get_ai_pending_items())) {
+      render_current_list();
+    }
   }
 
   document.getElementById('btn_search').addEventListener('click', function () {
-    run_search().catch(show_error);
+    if (confirm_leave_if_dirty()) {
+      run_search(true).catch(show_error);
+    }
   });
   document.getElementById('btn_rebuild').addEventListener('click', function () {
     fetch_json('/api/rebuild', { method: 'POST' })
@@ -2028,8 +2252,26 @@
   var btn_qf = document.getElementById('btn_quality_apply_filter');
   if (btn_qf) {
     btn_qf.addEventListener('click', function () {
-      load_quality_audit_tracks().catch(show_error);
+      if (confirm_leave_if_dirty()) {
+        page_by_mode.quality = 1;
+        current_page = 1;
+        load_quality_audit_tracks().catch(show_error);
+      }
     });
+  }
+  if (el_pagination) {
+    el_pagination.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('button[data-page]');
+      if (btn && !btn.disabled) change_page(parseInt(btn.getAttribute('data-page'), 10));
+    });
+    if (window.ResizeObserver) {
+      new ResizeObserver(function () {
+        var next_radius = el_pagination.clientWidth >= 520 ? 2 : 1;
+        if (!el_pagination.hidden && next_radius !== pagination_radius) {
+          render_pagination();
+        }
+      }).observe(el_pagination);
+    }
   }
   document.getElementById('btn_back_list').addEventListener('click', function () {
     el_workspace.classList.remove('workspace_show_detail');
@@ -2082,7 +2324,15 @@
   var el_ai_batch = document.getElementById('ai_test_batch');
   if (el_ai_batch) {
     el_ai_batch.addEventListener('change', function () {
+      if (!confirm_leave_if_dirty()) {
+        this.value = ai_test_batch;
+        return;
+      }
       ai_test_batch = this.value;
+      page_by_mode.ai = 1;
+      if (list_mode === 'ai') {
+        current_page = 1;
+      }
       ai_selected_ids = {};
       fetch_json('/api/preview/settings', {
         method: 'POST',

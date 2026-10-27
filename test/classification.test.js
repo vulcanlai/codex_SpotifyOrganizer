@@ -180,6 +180,40 @@ test('UI 搜尋及篩選', function () {
   });
   assert.ok(result.total >= 1);
   assert.ok(result.items.length >= 1);
+  const target_id = result.items[0].spotify_id;
+  const located = search_classification_tracks(built.index_doc, {
+    q: '玫瑰',
+    locate_track_id: target_id,
+    locate_page: true,
+    limit: 1,
+    offset: 0,
+  });
+  assert.ok(located.located_index >= 0);
+  assert.ok(located.items.some(function (row) { return row.spotify_id === target_id; }));
+  const excluded = search_classification_tracks(built.index_doc, {
+    q: '__不存在的搜尋條件__',
+    locate_track_id: target_id,
+    limit: 1,
+    offset: 0,
+  });
+  assert.equal(excluded.located_index, -1);
+});
+
+test('UI 本機定位回歸：Let It Be Me 直接回傳第 6 頁資料', async function () {
+  const track_id = '0V58TmLnChjbNycM9QfFC0';
+  const res = await handle_classification_api(
+    'GET',
+    '/api/tracks',
+    '',
+    new URLSearchParams(
+      'limit=100&offset=0&locate_page=1&locate_track_id=' + track_id
+    )
+  );
+  const data = JSON.parse(res.body);
+  assert.equal(data.located_index, 518);
+  assert.equal(data.offset, 500);
+  assert.equal(Math.floor(data.located_index / 100) + 1, 6);
+  assert.ok(data.items.some(function (row) { return row.spotify_id === track_id; }));
 });
 
 test('UI API 修改及保存覆寫', async function () {
