@@ -6,9 +6,7 @@ import path from 'node:path';
 import { clear_data_sync_test_env_for_production_cli } from '../../lib/data_sync/production_cli_guard.js';
 import { pick_import_zip_open_path } from '../../lib/data_sync/win_file_dialog.js';
 import { resolve_project_root_from_anchor } from '../../lib/data_sync/project_root.js';
-import { run_data_import } from '../../lib/data_sync/import_run.js';
-import { format_import_preview_zh } from '../../lib/data_sync/import_gui_messages.js';
-import { IMPORT_APPLY_CONFIRM_TOKEN } from '../../lib/data_sync/constants.js';
+import { run_import_gui_flow } from '../../lib/data_sync/import_gui_flow.js';
 import { read_gui_pick_result_file } from '../../lib/data_sync/gui_pick_result.js';
 
 clear_data_sync_test_env_for_production_cli();
@@ -41,7 +39,7 @@ function resolve_input_zip_from_argv(argv) {
 /**
  * @returns {Promise<boolean>}
  */
-function ask_apply_confirm() {
+function ask_apply_confirm(prompt, expected) {
   return new Promise(function (resolve) {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -49,11 +47,11 @@ function ask_apply_confirm() {
       terminal: true,
     });
     rl.question(
-      '是否正式匯入？輸入 yes 才會寫入專案資料，其他任意鍵取消： ',
+      prompt,
       function (answer) {
         rl.close();
         const t = (answer || '').trim().toLowerCase();
-        resolve(t === 'yes' || t === 'y');
+        resolve(t === expected.toLowerCase());
       }
     );
   });
@@ -88,49 +86,15 @@ async function main() {
     sync_env_project_root: project_root,
   };
 
-  const dry = await run_data_import(
-    Object.assign({}, import_common, { dry_run: true })
-  );
-
-  if (dry.preview && dry.preview.seven_zip) {
-    console.error(
-      '7-Zip：' +
-        dry.preview.seven_zip.executable +
-        '（版本 ' +
-        (dry.preview.seven_zip.version || '未知') +
-        '）'
-    );
-  }
-
-  if (!dry.preview) {
-    console.error('匯入預覽失敗：' + (dry.reason_zh || '未知錯誤'));
-    process.exit(1);
-  }
-
-  console.log(format_import_preview_zh(dry.preview, project_root));
-
-  if (!dry.ok) {
-    console.error('無法繼續匯入：' + (dry.preview.handoff.reason_zh || dry.reason_zh));
-    process.exit(1);
-  }
-
-  if (dry.preview.handoff.allow_apply === false) {
-    console.error('交接或安全檢查不允許匯入。');
-    process.exit(1);
-  }
-
-  const go = await ask_apply_confirm();
-  if (!go) {
+  const applied = await run_import_gui_flow({
+    import_common,
+    project_root,
+    ask_confirm: ask_apply_confirm,
+  });
+  if (applied.cancelled) {
     console.log('已取消正式匯入，專案資料未變更。');
     process.exit(0);
   }
-
-  const applied = await run_data_import(
-    Object.assign({}, import_common, {
-      apply: true,
-      confirm_token: IMPORT_APPLY_CONFIRM_TOKEN,
-    })
-  );
 
   if (!applied.ok) {
     console.error('匯入失敗：' + (applied.reason_zh || '未知錯誤'));
@@ -149,6 +113,9 @@ async function main() {
   }
   if (applied.preview) {
     console.log('bundle_id：' + applied.preview.bundle_id);
+  }
+  if (applied.backup_run_dir && applied.backup_verified) {
+    console.log('匯入前備份已驗證：' + applied.backup_run_dir);
   }
   process.exit(0);
 }

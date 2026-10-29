@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { run_data_export } from '../lib/data_sync/export_run.js';
 import { run_data_import } from '../lib/data_sync/import_run.js';
+import { run_import_gui_flow } from '../lib/data_sync/import_gui_flow.js';
 import {
   normalize_and_validate_import_member_path,
   detect_case_insensitive_path_collisions,
@@ -206,6 +207,52 @@ test('5. 本機資料修改後衝突', async function () {
   const dr = await import_zip_to(tgt, zip2, { dry_run: true });
   assert.equal(dr.ok, false);
   assert.equal(dr.preview.handoff.scenario, 'local_modified');
+  const authorization = dr.preview.manifest_sha256;
+  const wrong = await import_zip_to(tgt, zip2, {
+    apply: true,
+    confirm_token: 'I_UNDERSTAND_DATA_SYNC_IMPORT',
+    authorized_local_modified_manifest_sha256: 'wrong-manifest',
+  });
+  assert.equal(wrong.ok, false);
+  assert.match(wrong.reason_zh, /SHA-256/);
+  const no_confirm = await import_zip_to(tgt, zip2, {
+    apply: true,
+    authorized_local_modified_manifest_sha256: authorization,
+  });
+  assert.equal(no_confirm.ok, false);
+  assert.equal(fs.readFileSync(path.join(tgt, REQUIRED_CORE[0]), 'utf8'), '{"local_edit":true}');
+  const prompts = [];
+  const authorized = await run_import_gui_flow({
+    import_common: {
+      project_root_override: tgt,
+      input_zip: zip2,
+      password_mode: 'stdin',
+      stdin_password: TEST_PASSWORD,
+    },
+    project_root: tgt,
+    log() {},
+    ask_confirm: async function (prompt, expected) {
+      prompts.push(expected);
+      return true;
+    },
+  });
+  assert.deepEqual(prompts, ['OVERWRITE', 'yes']);
+  assert.equal(authorized.ok, true);
+  assert.equal(authorized.applied, true);
+  assert.equal(authorized.backup_verified, true);
+  assert.equal(authorized.preview.handoff.authorized_local_modified.scenario, 'local_modified');
+  assert.equal(fs.readFileSync(path.join(authorized.backup_run_dir, REQUIRED_CORE[0]), 'utf8'), '{"local_edit":true}');
+  assert.equal(fs.readFileSync(path.join(tgt, REQUIRED_CORE[0]), 'utf8'), JSON.stringify({ remote: 3 }));
+  fs.writeFileSync(path.join(tgt, REQUIRED_CORE[0]), '{"local_edit":true}');
+  const normal_again = await import_zip_to(tgt, zip2, { dry_run: true });
+  assert.equal(normal_again.ok, false);
+  assert.equal(normal_again.preview.handoff.scenario, 'local_modified');
+  const old_authorized = await import_zip_to(tgt, zip1, {
+    dry_run: true,
+    authorized_local_modified_manifest_sha256: (await import_zip_to(tgt, zip1, { dry_run: true })).preview.manifest_sha256,
+  });
+  assert.equal(old_authorized.ok, false);
+  assert.ok(['handoff_chain_break', 'state_inconsistent'].includes(old_authorized.preview.handoff.scenario));
 });
 
 test('6. Manifest 損壞', function () {

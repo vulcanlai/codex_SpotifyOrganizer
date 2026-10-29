@@ -9,6 +9,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { format_import_preview_zh } from '../lib/data_sync/import_gui_messages.js';
+import { run_import_gui_flow } from '../lib/data_sync/import_gui_flow.js';
 import { validate_zip_output_path } from '../lib/data_sync/path_guard.js';
 import { resolve_project_root_from_anchor } from '../lib/data_sync/project_root.js';
 import { FORBIDDEN_ABSOLUTE_ROOTS } from '../lib/data_sync/constants.js';
@@ -57,6 +58,47 @@ function assert_phase2_bat_cmd_safe_bytes(buf) {
     }
   }
 }
+
+test('GUI 授權只限選定 manifest，取消或其他安全錯誤均不寫入', async function () {
+  const sha = 'a'.repeat(64);
+  const local = { ok: false, preview: { manifest_sha256: sha, handoff: { scenario: 'local_modified' } } };
+  const safe = { ok: true, preview: { handoff: { ok: true, allow_apply: true } } };
+  for (const scenario of ['cancel-overwrite', 'cancel-apply', 'chain-break', 'success', 'other-error']) {
+    const calls = [];
+    const prompts = [];
+    const result = await run_import_gui_flow({
+      import_common: { input_zip: 'selected.zip' },
+      project_root: 'target',
+      log() {},
+      ask_confirm: async function (prompt, expected) {
+        prompts.push(expected);
+        return !((scenario === 'cancel-overwrite' && expected === 'OVERWRITE') ||
+          (scenario === 'cancel-apply' && expected === 'yes'));
+      },
+      run_import: async function (options) {
+        calls.push(options);
+        if (calls.length === 1) {
+          return scenario === 'other-error'
+            ? { ok: false, preview: { handoff: { scenario: 'unsafe_conflict' } } }
+            : local;
+        }
+        assert.equal(options.input_zip, 'selected.zip');
+        assert.equal(options.authorized_local_modified_manifest_sha256, sha);
+        if (scenario === 'chain-break') return { ok: false, reason_zh: 'handoff_chain_break' };
+        return options.apply ? { ok: true, applied: true, backup_verified: true } : safe;
+      },
+    });
+    assert.equal(calls.some(c => c.apply), scenario === 'success');
+    if (scenario.startsWith('cancel')) assert.equal(result.cancelled, true);
+    if (scenario === 'chain-break' || scenario === 'other-error') assert.equal(result.ok, false);
+    if (scenario === 'other-error') assert.deepEqual(prompts, []);
+    if (scenario === 'success') {
+      assert.deepEqual(prompts, ['OVERWRITE', 'yes']);
+      assert.equal(calls[2].confirm_token, 'I_UNDERSTAND_DATA_SYNC_IMPORT');
+      assert.equal(result.backup_verified, true);
+    }
+  }
+});
 
 test('1. 匯入預覽繁體中文格式', function () {
   const text = format_import_preview_zh(
