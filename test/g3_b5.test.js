@@ -1,21 +1,23 @@
+import { create_g3_fixture } from './helpers/g3_fixture.js';
+const fixture = create_g3_fixture();
 /**
  * G3-B.5 百首樣本規劃（離線）
  */
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
-import { run_g3_b5_offline_plan } from '../lib/classification/g3_b/run_g3_b5_offline_plan.js';
-import { load_g3_b_sample_from_g1 } from '../lib/classification/g3_b/sample.js';
-import { validate_primary_subgenres } from '../lib/classification/g3_b/genre_subgenre_validate.js';
-import { build_genre_dictionary_quality_report } from '../lib/classification/g3_b/genre_dictionary_report.js';
-import { is_batch_completed, apply_batch_import_result } from '../lib/classification/g3_b/batch_plan.js';
-import {
+const { run_g3_b5_offline_plan } = await fixture.load("classification/g3_b/run_g3_b5_offline_plan.js");
+const { load_g3_b_sample_from_g1 } = await fixture.load("classification/g3_b/sample.js");
+const { validate_primary_subgenres } = await fixture.load("classification/g3_b/genre_subgenre_validate.js");
+const { build_genre_dictionary_quality_report } = await fixture.load("classification/g3_b/genre_dictionary_report.js");
+const { is_batch_completed, apply_batch_import_result } = await fixture.load("classification/g3_b/batch_plan.js");
+const {
   FILE_G3_B5_SAMPLE_100,
   FILE_G3_B5_REUSE_30,
   FILE_G3_B5_NEW_70,
   G3_B5_SELECTION_SEED,
-} from '../lib/classification/g3_b/paths_b5.js';
-import { SUBGENRES_BY_CODE } from '../lib/classification/genre_taxonomy.js';
+} = await fixture.load("classification/g3_b/paths_b5.js");
+const { SUBGENRES_BY_CODE } = await fixture.load("classification/genre_taxonomy.js");
 
 describe('G3-B.5', { concurrency: 1 }, function () {
   test('離線計畫：100 首無重複、30+70', function () {
@@ -116,6 +118,7 @@ describe('G3-B.5', { concurrency: 1 }, function () {
   });
 
   test('產物檔案已寫入 g3-b5-trial-100', function () {
+    run_g3_b5_offline_plan({ write: true });
     assert.ok(fs.existsSync(FILE_G3_B5_SAMPLE_100));
     assert.ok(fs.existsSync(FILE_G3_B5_REUSE_30));
     assert.ok(fs.existsSync(FILE_G3_B5_NEW_70));
