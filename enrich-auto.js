@@ -88,6 +88,7 @@ async function main() {
       delay_ms: cli.delay_ms,
       batch_pause_sec: cli.batch_pause_sec,
       dry_run: cli.dry_run,
+      retry_failed: cli.retry_failed,
       abort_signal,
     };
 

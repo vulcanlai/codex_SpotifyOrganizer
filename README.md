@@ -320,11 +320,25 @@ npm run classify:build
 npm run enrich:tracks -- --max=10 --resume --delay-ms=3000
 ```
 
-**多批自動（`enrich:auto`）**：
+**多批自動正常補全（`enrich:auto`，只查尚無快取的歌曲）**：
 
 ```bash
 npm run enrich:auto -- --total=100 --batch-size=20 --delay-ms=3000 --batch-pause-sec=120 --resume
 ```
+
+已有 `partial`、404、403、429、network 或其他非完整快取的歌曲會延後，冷卻到期也不會自動進入正常佇列。正常階段本次新產生的異常同樣延後；不會自動切換到異常重試。
+
+**獨立重試異常歌曲（只處理已有非完整快取且冷卻到期者）**：
+
+```bash
+npm run enrich:auto -- --total=20 --batch-size=5 --delay-ms=3000 --batch-pause-sec=120 --resume --retry-failed
+```
+
+`--retry-failed` 不查無快取歌曲，也不略過單曲冷卻或全域 `Retry-After`。建議先完成正常補全，再主動執行此階段。每次 auto 執行中，同一 ID 最多進入一次歌曲處理；底層 401／429 的必要重試仍計入 `--total` 預算。
+
+兩種階段均可加上 `--dry-run` 唯讀查看計畫。摘要分列正常待補全、異常總數、延後異常、冷卻異常、本次成功／失敗與全部剩餘；冷卻異常包含於延後數，不可重複加總。失敗包含 `partial` 與各種查詢錯誤。`remaining_after_run` 包含兩階段所有未完成歌曲；`can_resume=true` 表示仍有未完成資料，不代表當下已解除冷卻或本階段有可查歌曲。
+
+`--resume` 繼續沿用快取與 checkpoint，不重置資料；auto 即使未指定此旗標也不清空進度。單批 `enrich:tracks` 維持原有冷卻重試行為，正常補全優先與 `--retry-failed` 僅適用於 `enrich:auto`。
 
 #### 參數說明（程式 enforced 範圍）
 
@@ -336,6 +350,7 @@ npm run enrich:auto -- --total=100 --batch-size=20 --delay-ms=3000 --batch-pause
 | `--delay-ms=N` | 兩者 | 每次請求間隔（毫秒） | 非負；`enrich:auto` **≥ 1000** |
 | `--batch-pause-sec=N` | `enrich:auto` | 批次之間暫停秒數 | 預設 30 |
 | `--resume` | 兩者 | 沿用快取與 checkpoint 續跑 | 旗標 |
+| `--retry-failed` | `enrich:auto` | 只重試已有異常快取且冷卻到期的歌曲 | 主動指定；不自動切換階段 |
 | `--dry-run` | 兩者 | 不寫入快取（測試用） | 旗標 |
 
 完成後可執行 `npm run classify:build` 讓分類索引反映新 Metadata。
@@ -368,7 +383,7 @@ npm run enrich:auto -- --total=100 --batch-size=20 --delay-ms=3000 --batch-pause
 
 1. 確認 `retry_not_before` 已過
 2. 以**小批量**重新啟動，例如 `--max=5` 或 `--total=50 --batch-size=10`，並保留 `--delay-ms=3000` 或更高
-3. 使用 **`--resume`** 跳過已快取曲目，避免重複查詢
+3. 使用 **`enrich:auto --resume`** 優先處理無快取歌曲；正常補全結束後，再明確加上 **`--retry-failed`** 重試異常。兩者皆沿用既有進度
 
 ### Ctrl+C 中止
 
