@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { run_data_export } from '../lib/data_sync/export_run.js';
 import { run_data_import } from '../lib/data_sync/import_run.js';
 import { run_import_gui_flow } from '../lib/data_sync/import_gui_flow.js';
@@ -93,6 +94,55 @@ async function import_zip_to(target, zip_path, opts) {
     )
   );
 }
+
+test('西元、舊民國年份及自訂 ZIP 檔名皆可正常匯入', async function () {
+  enable_test_env();
+  const src = make_source_project();
+  const bundle_dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-zip-name-'));
+  const targets = [];
+  try {
+    const zip = path.join(bundle_dir, 'spotify-handoff-20261102-233213.zip');
+    const names = ['spotify-handoff-20261102-233213.zip',
+      'spotify-handoff-1151102-233213.zip', 'spotify-organizer-handoff.zip'];
+    for (const name of names) targets.push(make_empty_target());
+    // ZIP readers may retain file handles until process exit on Windows.
+    // Run the round trips in a child so the parent can safely remove every owned fixture.
+    const worker = `
+      import assert from 'node:assert/strict';
+      import fs from 'node:fs';
+      import path from 'node:path';
+      import { run_data_export } from ${JSON.stringify(new URL('../lib/data_sync/export_run.js', import.meta.url).href)};
+      import { run_data_import } from ${JSON.stringify(new URL('../lib/data_sync/import_run.js', import.meta.url).href)};
+      const src = ${JSON.stringify(src)}, zip = ${JSON.stringify(zip)};
+      const names = ${JSON.stringify(names)}, targets = ${JSON.stringify(targets)};
+      const options = { password_mode: 'stdin', stdin_password: ${JSON.stringify(TEST_PASSWORD)} };
+      assert.equal((await run_data_export({ ...options, project_root_override: src, output_zip: zip })).ok, true);
+      for (let i = 0; i < names.length; i++) {
+        const candidate = path.join(path.dirname(zip), names[i]);
+        if (candidate !== zip) fs.copyFileSync(zip, candidate);
+        const input = { ...options, project_root_override: targets[i], input_zip: candidate };
+        const dry = await run_data_import({ ...input, dry_run: true });
+        assert.equal(dry.ok, true, JSON.stringify(dry));
+        const applied = await run_data_import({ ...input, apply: true, confirm_token: 'I_UNDERSTAND_DATA_SYNC_IMPORT' });
+        assert.equal(applied.ok, true, JSON.stringify(applied));
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', worker], {
+      encoding: 'utf8', timeout: 30000, env: { ...process.env },
+    });
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+    for (const target of targets) {
+      assert.equal(fs.readFileSync(path.join(target, REQUIRED_CORE[0]), 'utf8'),
+        fs.readFileSync(path.join(src, REQUIRED_CORE[0]), 'utf8'));
+    }
+  } finally {
+    for (const owned of [src, bundle_dir, ...targets]) {
+      assert.equal(path.dirname(owned), path.resolve(os.tmpdir()));
+      assert.match(path.basename(owned), /^so-(import-src-|import-tgt-|zip-name-)/);
+      fs.rmSync(owned, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    }
+  }
+});
 
 test('1. 正常初次匯入', async function () {
   enable_test_env();

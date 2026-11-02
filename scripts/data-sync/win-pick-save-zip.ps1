@@ -57,8 +57,8 @@ try {
   $dialog.DefaultExt = 'zip'
   $dialog.AddExtension = $true
   $dialog.OverwritePrompt = $false
-  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-  $dialog.FileName = "spotify-handoff-$stamp.zip"
+  . (Join-Path $PSScriptRoot 'taiwan-zip-name.ps1')
+  $dialog.FileName = Get-SpotifyHandoffFileName
 
   $initialResolved = ''
   if ($InitialDirectory -and (Test-Path -LiteralPath $InitialDirectory)) {

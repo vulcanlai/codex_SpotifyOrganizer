@@ -1,0 +1,9 @@
+{
+  "name": "so-pty-spike-local",
+  "private": true,
+  "type": "module",
+  "description": "隔離 node-pty 相容性驗證（不納入正式依賴，勿 commit node_modules）",
+  "dependencies": {
+    "@cdktf/node-pty-prebuilt-multiarch": "^0.10.2"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "so-aes-spike-local",
+  "private": true,
+  "type": "module",
+  "description": "WinZip AES-256 隔離 POC（勿 commit node_modules）",
+  "dependencies": {
+    "@zip.js/zip.js": "^2.24.0",
+    "archiver": "^7.0.1",
+    "archiver-zip-encrypted": "^2.0.0"
+  }
+}

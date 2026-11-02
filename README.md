@@ -135,6 +135,7 @@ npm install
 | `npm run probe:tracks` | 曲目 Metadata 唯讀探測 | 除錯；受 429 冷卻限制 | 是 | 否 | 否 |
 | `npm run enrich:tracks` | 分批補齊 Metadata（單次） | 小批量補歌名/專輯/發行日等 | 是（Track API） | 是（enrichment 快取等） | 否 |
 | `npm run enrich:auto` | 多批次自動 enrichment | 長時間分批補齊 | 是（Track API） | 是 | 否 |
+| `npm run enrich:status` | 查詢本機補全與播放狀態 | 隨時查看歷史累計進度 | 否 | 否（完全唯讀） | 否 |
 | `npm run classify:build` | 重建分類索引與摘要 | 備份/enrichment/覆寫/審核後刷新 UI 數據 | 否 | 是（`classification-index.json`、`formal-classification-state.json` 等） | 否 |
 | `npm run classify:ui` | 智慧分類 Web UI（`:8891`） | 瀏覽、AI 審核、批次審核、本機歌單預覽、人工覆寫 | 否 | 否（UI 操作經 API 寫分類檔） | 否 |
 | `npm run classify:ai-export` | 匯出 AI 測試樣本（預設 30 首） | 新一批測試或重抽樣本 | 否 | 是（`ai-test/sample-30.json` 等） | 否 |
@@ -312,7 +313,39 @@ npm run classify:build
 
 ### 情境 D：繼續補齊歌曲資訊（Metadata）
 
-必須帶參數，**不提供 `--max` / `--total` 不會跑全庫**（安全設計）。
+執行補全必須帶參數，**不提供 `--max` / `--total` 不會跑全庫**（安全設計）。查詢狀態不需參數。
+
+#### 唯讀查詢補全狀態
+
+```bash
+npm run enrich:status
+```
+
+只讀取本機 V2 音樂庫、合併完成旗標、Metadata 快取與 `backup/enrichment/rate-limit-state.json`，不呼叫 Spotify API、不消耗 API 額度、不啟動 OAuth 或更新 Token，不執行補全或重試、不更新冷卻時間，也不建立或修改快取、Checkpoint、冷卻紀錄、備份、報表或任何輸出檔。音樂庫或快取缺失、格式錯誤或無法讀取時會顯示錯誤並以非零狀態結束，不自動重建；冷卻紀錄異常則保留其他統計，於冷卻區塊顯示未知與原因。
+
+| 輸出欄位 | 意義與計算方式 |
+|---|---|
+| 音樂庫歌曲總數 | V2 索引內依 Spotify ID 去重，不把庫外快取加入音樂庫 |
+| 已完成 Metadata 補全、完成率 | 沿用既有佇列：V2 已有 Metadata（不符合 `is_id_only_track_row()`），或快取通過 `is_metadata_cache_complete()`；同一 ID 只計一次。完成率為完成數／總數，空庫為 0%。這是歷史累計，並非本次成功數 |
+| 正常待補全 | V2 僅有 ID 且尚無快取 |
+| 異常未完成 | V2 僅有 ID，且已有非完整成功快取 |
+| 延後處理的異常 | 沿用正常補全階段佇列口徑，所有異常均延後至主動重試 |
+| 冷卻中的異常 | 依既有單曲冷卻規則及查詢當下時間計算，是異常與延後數的子集合，不可重複相加 |
+| 全部剩餘待補全 | 正常待補全＋異常未完成；加上已完成應等於音樂庫總數 |
+| 已知可播放、已知不可播放／受限、播放狀態未知 | 全庫每個 ID 各計一次，三類合計等於音樂庫總數 |
+| 快取完整成功、403、404、429、network、partial、其他異常、快取總數 | 全部本機快取的歷史狀態分類，包含庫外 ID；分類合計等於快取總數，不等於全庫播放統計或異常未完成數 |
+| 快取最後更新時間 | 快取文件的 `updated_at` 轉為台灣時間，例如 `2026/11/02 09:32:19（台灣時間）`；未記錄時顯示未知，不以查詢時間代替，也不作為冷卻截止時間 |
+| Spotify API 冷卻狀態 | 從已保存且通過驗證的全域 Track API 429 紀錄顯示是否冷卻中、冷卻截止、建議重新執行時間與尚需等待多久；已結束時明確提示可重新嘗試 |
+
+狀態查詢的所有日期固定使用 `Asia/Taipei`、西元曆與 `YYYY/MM/DD HH:mm:ss（台灣時間）`。建議重新執行時間沿用向上取整至整分鐘的規則（顯示秒數 `00`，整分鐘截止不另加一分鐘），不得早於實際截止時間。已過期的紀錄仍顯示其歷史截止與建議時間，尚需等待為 0 秒；這僅代表本機保存的冷卻已結束，不保證 Spotify 即時可用。
+
+「異常未完成」「冷卻中的異常」是歌曲數及單曲重試冷卻；「Spotify API 冷卻狀態」是全域 Track API 暫停期限，兩者獨立，不能由單曲 429 數量判定目前 API 是否冷卻中。無紀錄時顯示「無有效冷卻紀錄」及未知；格式錯誤、無法讀取、紀錄明示為推估或歷史觀測時間不可靠時也顯示未知，不從快取回填或自行推估、不宣稱可重新執行。既有補全指令仍沿用原本的冷卻阻擋規則。
+
+V2 完成判定特別沿用現有補全行為：只要有歌名、藝人、專輯名或發行日等 Metadata，便不再是僅有 ID 的列；這不保證每個詳細欄位都齊全。API 快取則須為 `ok` 且必要歌名、藝人及專輯欄位完整。本指令不改變既有補全資格。
+
+播放狀態只認明確的 `playability_status`：`playable` 是可播放，`not_playable` 與 `restricted` 是不可播放／受限。同一 ID 衝突時，API 快取的明確已知狀態優先於 V2；快取為 `unknown`、`null` 或缺少狀態時，採 V2 明確已知狀態；兩者皆無可靠狀態則列未知，不從其他欄位推測。此優先順序不比較時間戳，代表本機已知記錄，並非即時可用性。不可播放不代表 Metadata 補全失敗，未知也不代表不可播放。
+
+公司與家用電腦的統計各依本機資料為準，須先完成既有資料同步才可比較；冷卻數也可能隨查詢時間改變。
 
 **單次小批（`enrich:tracks`）**：
 
@@ -359,6 +392,12 @@ npm run enrich:auto -- --total=20 --batch-size=5 --delay-ms=3000 --batch-pause-s
 
 ---
 
+### 情境 E：ZIP 交接檔名
+
+Windows 匯出存檔對話框的預設檔名為 `spotify-handoff-YYYYMMDD-HHMMSS.zip`，例如 `spotify-handoff-20261102-233213.zip`。時間固定為台灣時間，使用西元曆與 ASCII 數字；Windows 10／11 對應時區 ID 為 `Taipei Standard Time`（`Asia/Taipei`）。舊版 `Get-Date -Format` 會沿用目前文化設定的曆法，民國曆可能產生 `1151102`，新版已明確指定 GregorianCalendar 與 InvariantCulture。
+
+既有民國年份 ZIP、舊西元年份 ZIP 與自訂檔名仍可匯入；匯入依 ZIP 內容、manifest、雜湊及交接鏈驗證，不解析檔名年份。CLI 指定的輸出路徑及使用者自訂存檔名稱仍沿用原操作，不重新命名或刪除舊檔。
+
 ## 5. Spotify API 限流與冷卻機制
 
 ### HTTP 429
@@ -366,6 +405,16 @@ npm run enrich:auto -- --total=20 --batch-size=5 --delay-ms=3000 --batch-pause-s
 - **意義**：Spotify 認為請求過於頻繁，要求用戶端暫停。
 - **`Retry-After`**：回應標頭（秒），表示應等待多久再試。
 - **為何不能瘋狂重試**：持續請求可能延長封禁，且本專案會將長冷卻寫入狀態檔並**拒絕新的 Track API 查詢**。
+
+429 提示與全域冷卻阻擋訊息固定使用 `Asia/Taipei`、西元曆與數字格式，不受 Windows 地區或曆法設定影響。例如：
+
+```text
+冷卻截止：2026/11/02 23:32:13（台灣時間）
+建議重新執行：2026/11/02 23:33（台灣時間）
+剩餘等待：2 分
+```
+
+建議時間由實際截止時間向上取整至整分鐘（已在整分鐘則保留，非零毫秒亦會進位），不會提前；只影響顯示，不改變冷卻、API 預算或重試規則。狀態檔仍保存原本 UTC ISO 時間。缺少有效 `Retry-After` 時仍沿用既有保守冷卻並明確標示「推估」，沒有有效截止時間時顯示未知。
 
 ### 冷卻期間應停止的操作
 
@@ -514,7 +563,7 @@ A：8891 已被佔用。關閉舊終端或依 [情境 A](#情境-a開啟智慧�
 A：不會。分類、審核、覆寫都在 `backup/classification/` JSON；關 UI 只停伺服器。
 
 **Q：重新啟動會重新下載全部歌曲嗎？**  
-A：不會。`classify:ui` 只讀本機索引。只有 `backup` / `enrich:*` 會打 Spotify API。
+A：不會。`classify:ui` 只讀本機索引。`backup`、`enrich:tracks` 與 `enrich:auto` 會打 Spotify API；`enrich:status` 完全唯讀且不呼叫 API。
 
 **Q：API 429 怎麼辦？**  
 A：停止 enrichment/probe:tracks，查看 `rate-limit-state.json`，等 `retry_not_before` 過後小批量 `--resume` 續跑。
