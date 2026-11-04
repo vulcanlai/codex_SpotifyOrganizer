@@ -3,9 +3,6 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import {
   OAuthTokenEndpointError,
   build_authorize_callback_user_message,
@@ -17,11 +14,6 @@ import {
   format_oauth_unexpected_error_log,
   oauth_error_for_user_display,
 } from '../lib/auth/oauth_error_safety.js';
-import {
-  apply_token_file_protection,
-  verify_token_file_protection,
-} from '../lib/auth/token_file_permissions.js';
-import { save_tokens_to_path } from '../lib/token_store.js';
 import {
   exchange_code_for_tokens,
   refresh_access_token,
@@ -115,152 +107,6 @@ test('4. 敏感 Body 不會出現在使用者錯誤訊息', function () {
   );
 });
 
-test('5. Token 檔案建立與更新（暫存路徑）', function () {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-token-'));
-  const file = path.join(dir, 'tokens.json');
-  try {
-    save_tokens_to_path(
-      file,
-      {
-        access_token: 'test_access',
-        refresh_token: 'test_refresh',
-        token_type: 'Bearer',
-        expires_at: Date.now() + 3600000,
-        scope: 'playlist-read-private',
-      },
-      process.platform === 'win32'
-        ? undefined
-        : { platform: 'linux' }
-    );
-    assert.equal(fs.existsSync(file), true);
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert.equal(parsed.access_token, 'test_access');
-    save_tokens_to_path(
-      file,
-      {
-        access_token: 'test_access_2',
-        refresh_token: 'test_refresh',
-        token_type: 'Bearer',
-        expires_at: Date.now() + 3600000,
-        scope: 'playlist-read-private',
-      },
-      process.platform === 'win32'
-        ? undefined
-        : { platform: 'linux' }
-    );
-    const parsed2 = JSON.parse(fs.readFileSync(file, 'utf8'));
-    assert.equal(parsed2.access_token, 'test_access_2');
-  } finally {
-    try {
-      fs.unlinkSync(file);
-    } catch {
-      /* ignore */
-    }
-    fs.rmdirSync(dir);
-  }
-});
-
-const TEST_SID = 'S-1-5-21-9999999999-9999999999-9999999999';
-
-test('6. Windows ACL 設定（SID grant + 事後 verify mock）', function () {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-acl-'));
-  const file = path.join(dir, 'tokens.json');
-  fs.writeFileSync(file, '{}', 'utf8');
-  try {
-    const calls = [];
-    const result = apply_token_file_protection(file, {
-      platform: 'win32',
-      resolve_windows_user_sid: function () {
-        return TEST_SID;
-      },
-      spawnSync: function (cmd, args) {
-        calls.push([cmd, args.slice()]);
-        const is_icacls_read =
-          cmd === 'icacls' &&
-          !args.some(function (a) {
-            return String(a).startsWith('/');
-          });
-        if (is_icacls_read) {
-          return {
-            status: 0,
-            stdout: `*${TEST_SID}:(M)\nNT AUTHORITY\\SYSTEM:(F)\n`,
-            stderr: '',
-          };
-        }
-        return { status: 0, stdout: '', stderr: '' };
-      },
-    });
-    assert.equal(result.ok, true);
-    assert.equal(result.method, 'icacls');
-    const grant_sid = calls.find(function (c) {
-      return c[1] && String(c[1][2] || '').indexOf(`*${TEST_SID}:(M)`) >= 0;
-    });
-    assert.ok(grant_sid);
-  } finally {
-    fs.unlinkSync(file);
-    fs.rmdirSync(dir);
-  }
-});
-
-test('7. ACL 第一步失敗（未改 inheritance）', function () {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-acl-fail-'));
-  const file = path.join(dir, 'tokens.json');
-  fs.writeFileSync(file, '{}', 'utf8');
-  try {
-    const result = apply_token_file_protection(file, {
-      platform: 'win32',
-      resolve_windows_user_sid: function () {
-        return TEST_SID;
-      },
-      spawnSync: function () {
-        return { status: 1, stdout: '', stderr: 'Access denied' };
-      },
-    });
-    assert.equal(result.ok, false);
-    assert.ok(!result.partial_acl_applied);
-    assert.ok(result.manual_hint_zh);
-    assert.match(result.manual_hint_zh, /icacls/i);
-  } finally {
-    fs.unlinkSync(file);
-    fs.rmdirSync(dir);
-  }
-});
-
-test('7b. ACL 部分成功後失敗會嘗試恢復繼承', function () {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-acl-partial-'));
-  const file = path.join(dir, 'tokens.json');
-  fs.writeFileSync(file, '{}', 'utf8');
-  try {
-    let icacls_n = 0;
-    const result = apply_token_file_protection(file, {
-      platform: 'win32',
-      resolve_windows_user_sid: function () {
-        return TEST_SID;
-      },
-      spawnSync: function (cmd, args) {
-        if (cmd !== 'icacls') {
-          return { status: 0, stdout: '', stderr: '' };
-        }
-        icacls_n += 1;
-        if (icacls_n === 1) {
-          return { status: 0, stdout: '', stderr: '' };
-        }
-        if (args.indexOf('/inheritance:e') >= 0) {
-          return { status: 0, stdout: '', stderr: '' };
-        }
-        return { status: 1, stdout: '', stderr: 'grant failed' };
-      },
-    });
-    assert.equal(result.ok, false);
-    assert.equal(result.partial_acl_applied, true);
-    assert.equal(result.recovery_attempted, true);
-    assert.match(result.warning || '', /無法確認/);
-  } finally {
-    fs.unlinkSync(file);
-    fs.rmdirSync(dir);
-  }
-});
-
 test('8. Token Refresh 成功流程相容（mock，不寫正式 token 檔）', function () {
   return with_mock_fetch(
     async function () {
@@ -296,68 +142,6 @@ test('9. sanitize 日誌與 console detail', function () {
   );
   const redacted = redact_oauth_secrets_in_text(`token ${FAKE_ACCESS} end`);
   assert.equal(redacted.indexOf(FAKE_ACCESS), -1);
-});
-
-test('10. verify 須含目前使用者 SID，且不因缺少 Everyone 即判安全', function () {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'so-verify-'));
-  const file = path.join(dir, 't.json');
-  fs.writeFileSync(file, '{}', 'utf8');
-  try {
-    const v = verify_token_file_protection(file, {
-      platform: 'win32',
-      expected_windows_user_sid: TEST_SID,
-      spawnSync: function () {
-        return {
-          status: 0,
-          stdout: `*${TEST_SID}:(M)\nNT AUTHORITY\\SYSTEM:(F)\n`,
-          stderr: '',
-        };
-      },
-    });
-    assert.equal(v.ok, true);
-    const no_sid = verify_token_file_protection(file, {
-      platform: 'win32',
-      expected_windows_user_sid: TEST_SID,
-      spawnSync: function () {
-        return {
-          status: 0,
-          stdout: 'NT AUTHORITY\\SYSTEM:(F)\n',
-          stderr: '',
-        };
-      },
-    });
-    assert.equal(no_sid.ok, false);
-    assert.equal(no_sid.reason, 'cannot_confirm_safe');
-    const bad = verify_token_file_protection(file, {
-      platform: 'win32',
-      expected_windows_user_sid: TEST_SID,
-      spawnSync: function () {
-        return {
-          status: 0,
-          stdout: `*${TEST_SID}:(M)\nEveryone:(F)\n`,
-          stderr: '',
-        };
-      },
-    });
-    assert.equal(bad.ok, false);
-    assert.equal(bad.reason, 'overly_broad_acl');
-    const guest = verify_token_file_protection(file, {
-      platform: 'win32',
-      expected_windows_user_sid: TEST_SID,
-      spawnSync: function () {
-        return {
-          status: 0,
-          stdout: `*${TEST_SID}:(M)\nBUILTIN\\Guests:(R)\n`,
-          stderr: '',
-        };
-      },
-    });
-    assert.equal(guest.ok, false);
-    assert.equal(guest.reason, 'overly_broad_acl');
-  } finally {
-    fs.unlinkSync(file);
-    fs.rmdirSync(dir);
-  }
 });
 
 test('11. 敏感例外物件不進 OAuth 日誌字串', function () {

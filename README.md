@@ -115,6 +115,19 @@ npm install
 - 之後會以 refresh token 自動更新 access token
 - 目前請求的 Scope 為**唯讀**：播放清單、已按讚、收藏專輯、追蹤藝人等（見 `lib/config.js` 的 `SCOPES`）
 
+#### Token ACL 安全修復第一、二階段
+
+Windows 正式呼叫端已接入核准機制：由 Windows「使用者範圍」環境設定（HKCU）取得 `SPOTIFYORG_AUTHORIZED_WINDOWS_SID`，以 `authorized_windows_user_sid` 傳給 ACL 驗證。此值須由本人確認後另外設定；程式不自動把目前程序 SID 當成核准值，也不使用程序繼承值、機器範圍值或專案 `.env` 的同名設定。**目前尚未建立正式核准設定或遷移真實 Token ACL，須待第三階段明確授權；未完成前仍會安全停止。** 不要將真實核准 SID 寫入專案檔案或貼進日誌。
+
+預設在沙箱外，以核准的 Windows 一般使用者、未提升權限的 PowerShell 或 Git Bash 終端機執行原有指令。核准 SID、執行 SID 與 Token 擁有者必須一致；正式入口拒絕 CodexSandbox 帳號或 `CodexSandboxUsers` 群組成員，也拒絕提升權限的管理員程序。核准值每次存取重新查核，HTTP 往返後儲存時再次取得，避免使用已撤銷的核准。
+
+- SID 使用系統目錄中的 `whoami.exe /user /fo csv /nh`；執行失敗、非零退出碼與解析失敗分別回報，不記錄原始輸出或環境變數。
+- ACL 使用 Windows PowerShell 的 .NET API，以數字 SID 驗證；以無 profile 的 inline command 執行，不變更 ExecutionPolicy。只允許核准使用者 Modify、SYSTEM 與 Administrators FullControl，並要求停用繼承；不授權 `CodexSandboxUsers` 或猜測本人 SID。
+- Windows 新空檔在建立當下即指定完整 DACL，確認安全後才寫入 Token；不先建立繼承寬鬆權限的檔案。隔離 ACL 遷移以單次 DACL 套用，失敗時嘗試還原原 DACL；無法確認安全便停止，可能留下空檔。既有檔案更新只驗證、不自動修改 ACL；不安全時保留原內容並停止。
+- `load_tokens()` 在核准與 ACL 檢查後才讀取內容；只有確定檔案不存在才回傳未登入。權限拒絕、格式錯誤或檔案變動會拋出 `TokenAccessError`，不觸發重新登入。OAuth／刷新先檢查再送 HTTP；Token 存取或儲存錯誤不會轉入瀏覽器授權，補全也不會將其記為歌曲網路錯誤繼續執行。狀態查詢維持離線，不需要讀取 Token。
+- 真實 Token 遷移仍須另外確認本人／沙箱執行身分、核准 SID、未知 SID 的用途及父目錄權限，再取得授權。此機制拒絕不同擁有者與多帳號共用；檔案 ACL 無法消除可寫父目錄造成的替換風險。更新使用原檔描述符，尚不保證磁碟寫入失敗時的內容原子性。
+- 隔離離線驗證：`node test/helpers/run_token_acl_tests.js`。只複製程式與指定測試，不複製 Token、`.env` 或正式資料；使用假資料、暫存檔及 mock HTTP，結束後清理測試暫存目錄。第一階段 61 項持續通過，第二階段加上正式呼叫端與狀態查詢共 97 項通過。一般使用者成功情境以 mock 驗證；原生 ACL 使用當前帳號的獨立假檔案，PowerShell／Git Bash 正式入口只實測沙箱拒絕行為。**尚未驗證沙箱外的一般使用者、HKCU 核准設定與真實 ACL 整合。** 應用程式拒絕沙箱不等於已撤銷現有作業系統 ACL；真實檔案過寬的 ACL 風險仍待第三階段處理。
+
 ---
 
 ## 3. 常用指令速查表
