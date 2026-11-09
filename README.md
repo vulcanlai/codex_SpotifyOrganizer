@@ -415,6 +415,28 @@ Windows 匯出存檔對話框的預設檔名為 `spotify-handoff-YYYYMMDD-HHMMSS
 
 既有民國年份 ZIP、舊西元年份 ZIP 與自訂檔名仍可匯入；匯入依 ZIP 內容、manifest、雜湊及交接鏈驗證，不解析檔名年份。CLI 指定的輸出路徑及使用者自訂存檔名稱仍沿用原操作，不重新命名或刪除舊檔。
 
+### 情境 E-2：公司／家裡 Git 程式 + ZIP 鏡射資料
+
+程式碼走 Git；受管理資料走加密 ZIP。兩者不要混用。
+
+| 同步什麼 | 怎麼做 | 不要做 |
+|----------|--------|--------|
+| 程式、共用文件 | `git pull` `origin/main`（先保留本機未提交修改） | 不要把 `backup/`、`.env`、Token、ZIP 推進 Git |
+| 曲庫、分類、人工規則、ledger、掃描清單內的工作檔 | 一端 `export-data.bat` 匯出加密 ZIP，另一端 `--mirror` | 不要用一般 `--apply` 當鏡射；不要對 Spotify 再做一套歌單 |
+
+**何時重新匯出：** 任一端改了納管資料（🎵 保存、`classify:build`、cleanup、enrichment、人工覆寫）後，由該端匯出新 ZIP。舊 1.0.0／未標 `mirror_supported` 的 ZIP **不能鏡射**，必須用目前程式重新匯出。
+
+**鏡射（接收端與 ZIP 完全一致）：**
+
+```text
+import-data.bat --input "<ZIP路徑>" --mirror --dry-run
+import-data.bat --input "<ZIP路徑>" --mirror --apply --confirm=I_UNDERSTAND_DATA_SYNC_MIRROR
+```
+
+一般 `--apply` **不會**變成鏡射。GUI 匯入仍是關係層／整檔路徑，不會自動刪多餘納管檔。有 ledger 時整檔 `--apply` 仍會被擋；關係層合併仍用 `--relation-plan-hash` 與 `I_UNDERSTAND_RELATION_IMPORT_APPLY`，不可與 `--mirror` 併用。
+
+鏡射只處理 minimal 匯出清單內的檔案（含 `library-v2`、分類索引、`manual-overrides`、`full-library-inference`、`managed-playlist-rules`／baseline／operations、`cleanup-ledger`、以及掃描根底下多出來的舊 wave／enrichment／imported 等）。**不會**動程式碼、`.env`、Token、Git、`node_modules`、正式 `backup/classification/backups/`、snapshots、readback 快取。匯入前會驗證密碼、manifest、hash、交接版本與必要檔；失敗則拒絕並還原，不留下半套資料。
+
 ## 5. Spotify API 限流與冷卻機制
 
 ### HTTP 429
@@ -1547,11 +1569,15 @@ wave 外待推理佇列 **1,387**（`remaining-after-wave.json`）；與 G3-E st
 
 優先順序：人工保留名稱 > 自動名稱；每歌單人工移除 > 自動分類補入；人工新增與自訂歌單內容保留。`mvp:spotify-sync` 與 `mvp:spotify-metadata-sync` 都會遵守這些規則。改名不產生新歌單；重建索引不抹規則。
 
-公司／家裡仍用既有加密 ZIP。匯出會納入 `managed-playlist-rules.json`／baseline／operations（不含 Token、.env、ACL、未確認 readback 快取）。有 `cleanup-ledger.json` 時**禁止整檔覆蓋**；dry-run 會附關係層預覽。有共同基準且無衝突時，才可用：
+公司／家裡：Git 同步程式，ZIP 同步資料。匯出會納入 `managed-playlist-rules.json`／baseline／operations、`full-library-inference.json`、`cleanup-ledger.json` 與其他 minimal 掃描檔（不含 Token、.env、ACL、未確認 readback 快取）。
+
+跨電腦要把接收端納管資料改成與 ZIP **完全一致**時，用鏡射（見情境 E-2），確認旗標為 `I_UNDERSTAND_DATA_SYNC_MIRROR`。一般 `--apply` 不會刪接收端多餘納管檔。
+
+有 `cleanup-ledger.json` 時**禁止整檔覆蓋**；dry-run 會附關係層預覽。只想合併關係、不想刪多餘檔時，有共同基準且無衝突才可用：
 
 `--apply --relation-plan-hash=<hash> --confirm=I_UNDERSTAND_RELATION_IMPORT_APPLY`
 
-無共同基準、舊包或未知格式維持阻擋。推薦單端完成保存／匯出，另一端再匯入後繼續編輯。ZIP 同步的是本機管理資料，不是再建立另一套線上歌單。
+無共同基準、舊包或未知格式維持阻擋。舊 ZIP 可繼續走關係層（若仍通過安全閘），但不能鏡射。推薦單端完成保存／匯出，另一端再鏡射後繼續編輯。ZIP 同步的是本機管理資料，不是再建立另一套線上歌單。
 
 ## 相關文件
 

@@ -1,4 +1,6 @@
 # SpotifyOrganizer — 跨電腦專案交接
+> **2026-11-09 ZIP 鏡射模式（優先於後文）**：獨立 `--mirror`（`I_UNDERSTAND_DATA_SYNC_MIRROR`）。一般 `--apply` 不會變成鏡射。交接版本 **1.1.0**。隔離測試 `test:data-sync-mirror` **5/5**。公司端已另匯出鏡射包 `.data-sync-out/spotify-handoff-20261109-105252.zip` SHA256 `bf4496a98039bfb7c8b15544ebe00c6483122d479085fd233daefd3d85d0f160`（`mirror_supported: true`）。舊包 `spotify-handoff-20261109-102138.zip` **保留未覆寫**，1.0.0 不可鏡射。正式鏡射匯入、Spotify 寫入未執行。詳見 README 情境 E-2、§6／§11。
+
 > **2026-11-09 正式 Apply 已完成（優先於後文）**：plan `2f5a7276682c85e186e6a86749224f32b9952dd9cc20abc2686b02e0f65f8633` 已本機保存。套用前重抓 `/me/playlists` 清單指紋相符。正式檔：`managed-playlist-rules.json`／`baseline`／`operations`。22 筆歌單層級移除、17 筆 Spotify 獨有保留、`🎵 台語歌手 / 年代` 27 首自訂、`🎵 華語 / 中國風` 名稱鎖定（原 ID）、`🎵 鄉村 / 藍調` 維持 `deleted_pending`。`classify:build` 後索引 **7773**（原曲庫 **7759** 不變）。同步 Dry Run 未寫 Spotify。新加密 ZIP：`.data-sync-out/spotify-handoff-20261109-102138.zip` SHA256 `b660bf4a0746552ca0600b28bc3f7a688d67aad585efdd77acbdb5fda0760bf3`。程式碼本次提交至 `origin/main`（不含曲庫／ZIP／Token）。家裡正式匯入 **未執行**。詳見 §6／§11。
 
 > **2026-11-09 🎵 讀回接續**：真實唯讀讀回已完整。清單 57、納管列 54。plan `2f5a7276…` 完整可套用但仍待確認。舊 `10e36ed5…`／`82f29b5…` 不可 apply。
@@ -131,9 +133,9 @@
 
 **G3-F.21**（`g3-f21-wave-92/wave-manifest.json`）：**staged_complete**｜**92/92**｜validate_fail **0**｜**adopt_disabled: true**
 
-**下一步（營運）**  
-1. **家裡電腦唯讀匯入預覽（尚未執行，需另授權正式套用）**：先 `git pull` 公司端 `main`，再把 `.data-sync-out/spotify-handoff-20261109-102138.zip` 拷到家裡後執行 `import-data.bat --input "<ZIP路徑>" --dry-run`。有 `cleanup-ledger.json` 時**禁止整檔覆蓋**。dry-run 會附關係層預覽；無衝突且有共同基準時，才可用 `--apply --relation-plan-hash=<hash> --confirm=I_UNDERSTAND_RELATION_IMPORT_APPLY`。  
-2. **Git**：公司端本次提交程式碼與文件（不含 `backup/`、ZIP、`.env`、Token）。家裡若有未提交修改，先保留再決定是否更新。  
+**下一步（營運）**
+1. **家裡鏡射（尚未執行）**：先 `git pull origin main` 取得 `--mirror` 程式。把公司新包 `.data-sync-out/spotify-handoff-20261109-105252.zip` 拷過去（勿用 `20261109-102138`）。先 `--mirror --dry-run` 看 `would_remove`，再 `--mirror --apply --confirm=I_UNDERSTAND_DATA_SYNC_MIRROR`。一般 `--apply` 不會刪多餘檔。關係層合併仍可用 `--relation-plan-hash`，不可與 `--mirror` 併用。
+2. **Git**：鏡射程式與文件提交至 `origin/main`（不含 `backup/`、ZIP、`.env`、Token）。家裡若有未提交修改，先保留再 pull。
 3. **不要重跑本次已成功的 Apply**。同一 plan 會被拒絕。舊 plan `10e36ed5…`／`82f29b5…` 仍不可套用。  
 4. **不要對 Spotify 執行** `mvp:spotify-sync --apply` 或 `mvp:spotify-metadata-sync --apply`，除非另授權。Dry Run 顯示 404 歌單跳過、人工名稱不改回、22 筆移除不會被補回；metadata 若套用會改 51 份描述（名稱 0 筆）。  
 5. G3-F **pending 已 0**；後續為 staged 人工複核／是否啟用 adopt（預設仍 disabled）。  
@@ -211,6 +213,8 @@
 ## 2026-11-06 下一步與驗證補記（補充§6／§11）
 
 已核對53份歌單總數、2份副本與ZIP雜湊；不重送新增。前次隔離83測試通過，本次AI缺主曲風回歸結果見resume-tests-20261106.txt。下一步一次確認45筆異常關係與舊歌單退場範圍，再清理、讀回驗證、匯出一次正式ZIP。保護家裡獨有資料；沒有正式同步、Git提交或部署。前次Token ACL檢查失敗的復原狀態未驗證，不讀取憑證或自行修改ACL。測試暫存可於報告保留後清除，原始ZIP、AI來源及同步manifest需保留。
+
+2026-11-09 ZIP 鏡射：隔離合成測試 `npm run test:data-sync-mirror` **5/5**（提交前再跑一次）。回歸 `test:data-sync-import` **26/26**、`test:data-sync-export` **30/30**。公司新包 `spotify-handoff-20261109-105252.zip` 已驗證 `mirror_supported: true`／1.1.0。未跑正式鏡射匯入、未刪真實資料。
 
 2026-11-09 正式 Apply：`test/managed_playlists.test.js` **26/26**（含真實 plan 隔離套用、重複套用拒絕、過期指紋拒絕）。同步／ZIP 隔離測試：`mvp_spotify_sync`、`mvp_playlist_metadata_sync`、`mvp_playlist_sync_apply`、`mvp_emotion_metadata_dry_run`、`data_sync_export`、`data_sync_import`、`acceptance_sandbox_import` 全部通過。全量 `npm test` 未跑（會複製整個 `backup/`）。新 ZIP 未覆寫既有檔。
 

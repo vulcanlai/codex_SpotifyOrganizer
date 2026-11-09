@@ -4,7 +4,10 @@
 import { run_data_import } from '../../lib/data_sync/import_run.js';
 import { clear_data_sync_test_env_for_production_cli } from '../../lib/data_sync/production_cli_guard.js';
 import { resolve_project_root_from_anchor } from '../../lib/data_sync/project_root.js';
-import { IMPORT_APPLY_CONFIRM_TOKEN } from '../../lib/data_sync/constants.js';
+import {
+  IMPORT_APPLY_CONFIRM_TOKEN,
+  IMPORT_MIRROR_CONFIRM_TOKEN,
+} from '../../lib/data_sync/constants.js';
 
 clear_data_sync_test_env_for_production_cli();
 
@@ -17,13 +20,17 @@ function print_usage() {
       '  import-data.bat --input "…zip" --apply --confirm=' +
         IMPORT_APPLY_CONFIRM_TOKEN,
       '  import-data.bat --input "…zip" --apply --relation-plan-hash=<hash> --confirm=I_UNDERSTAND_RELATION_IMPORT_APPLY',
+      '  import-data.bat --input "…zip" --mirror --dry-run',
+      '  import-data.bat --input "…zip" --mirror --apply --confirm=' +
+        IMPORT_MIRROR_CONFIRM_TOKEN,
       '',
       '選項：',
       '  --input <path>      來源 ZIP（必填）',
       '  --dry-run           僅預覽，不修改正式資料',
-      '  --apply             正式匯入（需 --confirm）',
+      '  --apply             正式匯入（需 --confirm；不會自動變成鏡射）',
+      '  --mirror            鏡射模式（ZIP 為受管理資料唯一基準；須另加確認）',
       '  --confirm <token>   必填確認字串',
-      '  --relation-plan-hash <hash>  有 cleanup-ledger 時改走關係層套用',
+      '  --relation-plan-hash <hash>  有 cleanup-ledger 時改走關係層套用（不可與 --mirror 併用）',
       '  --seven-zip <path>  手動指定 7z.exe',
     ].join('\n')
   );
@@ -37,6 +44,7 @@ function parse_args(argv) {
     confirm: null,
     relation_plan_hash: null,
     seven_zip: null,
+    mirror: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -44,6 +52,8 @@ function parse_args(argv) {
       out.dry_run = true;
     } else if (a === '--apply') {
       out.apply = true;
+    } else if (a === '--mirror') {
+      out.mirror = true;
     } else if (a === '--input') {
       out.input = argv[i + 1] || null;
       i += 1;
@@ -88,6 +98,11 @@ if (args.apply && args.dry_run) {
   process.exit(2);
 }
 
+if (args.mirror && args.relation_plan_hash) {
+  console.error('錯誤：--mirror 與 --relation-plan-hash 不可同時使用。');
+  process.exit(2);
+}
+
 if (!args.dry_run && !args.apply) {
   print_usage();
   console.error('\n錯誤：請指定 --dry-run 或 --apply。');
@@ -102,6 +117,7 @@ run_data_import({
   confirm_token: args.confirm,
   relation_plan_hash: args.relation_plan_hash,
   seven_zip_path: args.seven_zip,
+  mirror: args.mirror === true,
   password_mode: 'env',
   sync_env_project_root: sync_env_root,
 })
