@@ -16,12 +16,14 @@ function print_usage() {
       '  import-data.bat --input "E:\\交接\\spotify-organizer-minimal.zip" --dry-run',
       '  import-data.bat --input "…zip" --apply --confirm=' +
         IMPORT_APPLY_CONFIRM_TOKEN,
+      '  import-data.bat --input "…zip" --apply --relation-plan-hash=<hash> --confirm=I_UNDERSTAND_RELATION_IMPORT_APPLY',
       '',
       '選項：',
       '  --input <path>      來源 ZIP（必填）',
       '  --dry-run           僅預覽，不修改正式資料',
       '  --apply             正式匯入（需 --confirm）',
       '  --confirm <token>   必填確認字串',
+      '  --relation-plan-hash <hash>  有 cleanup-ledger 時改走關係層套用',
       '  --seven-zip <path>  手動指定 7z.exe',
     ].join('\n')
   );
@@ -33,6 +35,7 @@ function parse_args(argv) {
     dry_run: false,
     apply: false,
     confirm: null,
+    relation_plan_hash: null,
     seven_zip: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -51,6 +54,11 @@ function parse_args(argv) {
       i += 1;
     } else if (a.indexOf('--confirm=') === 0) {
       out.confirm = a.slice('--confirm='.length);
+    } else if (a === '--relation-plan-hash') {
+      out.relation_plan_hash = argv[i + 1] || null;
+      i += 1;
+    } else if (a.indexOf('--relation-plan-hash=') === 0) {
+      out.relation_plan_hash = a.slice('--relation-plan-hash='.length);
     } else if (a === '--seven-zip') {
       out.seven_zip = argv[i + 1] || null;
       i += 1;
@@ -92,6 +100,7 @@ run_data_import({
   dry_run: args.dry_run,
   apply: args.apply,
   confirm_token: args.confirm,
+  relation_plan_hash: args.relation_plan_hash,
   seven_zip_path: args.seven_zip,
   password_mode: 'env',
   sync_env_project_root: sync_env_root,

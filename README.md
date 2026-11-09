@@ -1,6 +1,8 @@
 # SpotifyOrganizer
 
-SpotifyOrganizer 是本機執行的 Spotify 音樂庫整理工具：備份收藏、合併來源、分批補齊歌曲 Metadata（中繼資料），並在本機進行 AI 輔助智慧分類與人工審核。**不會修改 Spotify 線上播放清單或歌曲資料**（除非未來另行實作且明確啟用）。
+SpotifyOrganizer 是本機執行的 Spotify 音樂庫整理工具：備份收藏、合併來源、分批補齊歌曲 Metadata（中繼資料），並在本機進行 AI 輔助智慧分類與人工審核。預設在本機分析；明確授權的同步功能可修改 Spotify 歌單，刪除與正式匯入仍須符合各自的授權及預覽閘。
+
+> 最新全庫分類與53份🎵歌單同步結果：[2026-11-06續作報告](reports/classification-refresh-20261105/report.md)。AI為藝人群組粗推論，66首待確認；不得重跑已完成的新增或續建過渡副本。
 
 > 說明：本 README 以 `package.json` 與程式碼為準整理。操作前請自行確認本機 `backup/` 摘要檔是否為最新狀態。
 
@@ -150,7 +152,9 @@ Windows 正式呼叫端已接入核准機制：由 Windows「使用者範圍」�
 | `npm run enrich:auto` | 多批次自動 enrichment | 長時間分批補齊 | 是（Track API） | 是 | 否 |
 | `npm run enrich:status` | 查詢本機補全與播放狀態 | 隨時查看歷史累計進度 | 否 | 否（完全唯讀） | 否 |
 | `npm run classify:build` | 重建分類索引與摘要 | 備份/enrichment/覆寫/審核後刷新 UI 數據 | 否 | 是（`classification-index.json`、`formal-classification-state.json` 等） | 否 |
-| `npm run classify:ui` | 智慧分類 Web UI（`:8891`） | 瀏覽、AI 審核、批次審核、本機歌單預覽、人工覆寫 | 否 | 否（UI 操作經 API 寫分類檔） | 否 |
+| `npm run classify:ui` | 智慧分類 Web UI（`:8891`） | 瀏覽、AI 審核、批次審核、本機歌單預覽、人工覆寫、🎵 讀回 plan | 否 | 否（UI 操作經 API 寫分類檔） | 否 |
+| `npm run playlists:preview` | 唯讀讀回 🎵 歌單差異 | 人工改名／增刪後預覽，確認前不保存 | 是（歌單 GET） | 是（readback plan／報告，非正式規則） | 否 |
+| `npm run playlists:apply` | 確認後保存本機人工優先調整 | 指定 plan hash 且明確確認 | 否 | 是（rules／baseline） | 否 |
 | `npm run classify:ai-export` | 匯出 AI 測試樣本（預設 30 首） | 新一批測試或重抽樣本 | 否 | 是（`ai-test/sample-30.json` 等） | 否 |
 | `npm run classify:ai-import` | 匯入 **v1** AI 候選 | 將 `ai-test/ai-candidates.json` 驗證後寫入 | 否 | 是 | 否 |
 | `npm run classify:ai-archive-v1` | 封存 v1 候選與審核副本 | v2 流程前備份 v1 | 否 | 是（`ai-test/v1/`，不覆蓋既有 manifest） | 否 |
@@ -1531,6 +1535,24 @@ wave 外待推理佇列 **1,387**（`remaining-after-wave.json`）；與 G3-E st
 
 ---
 
+## 🎵 人工歌單讀回與跨電腦同步
+
+只納管名稱去掉前置空白後以「🎵」開頭的歌單，身分是 Spotify playlist ID，不用名稱當鍵。
+
+1. 唯讀讀回（不改 Spotify、不寫正式規則）：`npm run playlists:preview`
+2. 檢查 `backup/classification/managed-playlists-readback/reports/<plan_hash>.md`
+3. 確認保存：`npm run playlists:apply -- --plan=<hash> --confirm=I_UNDERSTAND_MANAGED_PLAYLIST_APPLY`
+4. `npm run classify:build` 後，新讀回曲目才會出現在管理介面（不假裝已做 Metadata 補全）
+5. `classify:ui` 的「🎵 人工歌單讀回」只顯示已產生的 plan；確認旗標與 CLI 相同，不能略過安全檢查。UI **不會**自己連線 Spotify 讀回。
+
+優先順序：人工保留名稱 > 自動名稱；每歌單人工移除 > 自動分類補入；人工新增與自訂歌單內容保留。`mvp:spotify-sync` 與 `mvp:spotify-metadata-sync` 都會遵守這些規則。改名不產生新歌單；重建索引不抹規則。
+
+公司／家裡仍用既有加密 ZIP。匯出會納入 `managed-playlist-rules.json`／baseline／operations（不含 Token、.env、ACL、未確認 readback 快取）。有 `cleanup-ledger.json` 時**禁止整檔覆蓋**；dry-run 會附關係層預覽。有共同基準且無衝突時，才可用：
+
+`--apply --relation-plan-hash=<hash> --confirm=I_UNDERSTAND_RELATION_IMPORT_APPLY`
+
+無共同基準、舊包或未知格式維持阻擋。推薦單端完成保存／匯出，另一端再匯入後繼續編輯。ZIP 同步的是本機管理資料，不是再建立另一套線上歌單。
+
 ## 相關文件
 
 - 手動匯入歌單：`imports/README.md`
@@ -1538,3 +1560,6 @@ wave 外待推理佇列 **1,387**（`remaining-after-wave.json`）；與 G3-E st
 ---
 
 *檔案類型：操作手冊 · 語言：繁體中文 · 若與程式行為衝突，以原始碼為準。*
+
+
+2026-11-06正式清理與清理後ZIP：[執行結果及家裡同步限制](reports/classification-refresh-20261105/post-cleanup-report-20261106.md)。原始曲庫保留，清理ledger存在時禁止整檔匯入；7首補充來源跟隨full-library-inference.json匯出，家裡需使用支援補充來源的同版程式。

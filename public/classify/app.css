@@ -1148,6 +1148,17 @@ body {
   font-size: var(--font_sm);
 }
 
+#managed_playlists_panel .preview_mode_row {
+  flex-wrap: wrap;
+  gap: var(--space_sm);
+}
+
+#managed_plan_hash,
+#managed_plan_confirm {
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+
 @media (max-width: 480px) {
   .stats_cards {
     grid-template-columns: 1fr 1fr;

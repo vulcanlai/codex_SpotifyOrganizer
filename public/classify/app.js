@@ -2315,6 +2315,73 @@
       save_preview_mode(this.value).catch(show_error);
     });
   }
+  function render_managed_plan(data) {
+    var box = document.getElementById('managed_plan_summary');
+    var hash_input = document.getElementById('managed_plan_hash');
+    if (!box) {
+      return;
+    }
+    if (!data || !data.has_plan) {
+      box.textContent = (data && data.note_zh) || '尚無讀回預覽。';
+      return;
+    }
+    var s = data.summary || {};
+    box.textContent =
+      (data.applied ? '已保存。 ' : '未保存預覽。 ') +
+      'hash ' +
+      (data.plan_hash || '') +
+      '；歌單 ' +
+      (s.playlist_count || 0) +
+      '、新建 ' +
+      (s.new_count || 0) +
+      '、改名 ' +
+      (s.renamed_count || 0) +
+      '、未變更 ' +
+      (s.unchanged_count || 0) +
+      '、衝突 ' +
+      (data.conflict_count || 0) +
+      '。' +
+      (data.note_zh || '');
+    if (hash_input && !hash_input.value) {
+      hash_input.value = data.plan_hash || '';
+    }
+  }
+
+  function load_managed_plan() {
+    return fetch_json('/api/managed-playlists/plan').then(function (data) {
+      render_managed_plan(data);
+    });
+  }
+
+  var btn_managed_reload = document.getElementById('btn_managed_plan_reload');
+  if (btn_managed_reload) {
+    btn_managed_reload.addEventListener('click', function () {
+      load_managed_plan().catch(show_error);
+    });
+  }
+  var btn_managed_apply = document.getElementById('btn_managed_plan_apply');
+  if (btn_managed_apply) {
+    btn_managed_apply.addEventListener('click', function () {
+      var hash_el = document.getElementById('managed_plan_hash');
+      var confirm_el = document.getElementById('managed_plan_confirm');
+      fetch_json('/api/managed-playlists/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_hash: hash_el ? hash_el.value : '',
+          confirm: confirm_el ? confirm_el.value : '',
+        }),
+      })
+        .then(function (data) {
+          var box = document.getElementById('managed_plan_summary');
+          if (box) {
+            box.textContent = data.note_zh || data.reason_zh || JSON.stringify(data);
+          }
+        })
+        .catch(show_error);
+    });
+  }
+
   var btn_pp = document.getElementById('btn_preview_playlist');
   if (btn_pp) {
     btn_pp.addEventListener('click', function () {
@@ -2366,6 +2433,9 @@
     })
     .then(function () {
       return load_preview_settings();
+    })
+    .then(function () {
+      return load_managed_plan();
     })
     .then(function () {
       return run_search();

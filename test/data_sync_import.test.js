@@ -53,6 +53,11 @@ function enable_test_env() {
   process.env.DATA_SYNC_ALLOW_7Z_PASSWORD_STDIN = '1';
 }
 
+// 匯入已驗證實際曲庫結構，測試使用有效 V2 假資料。
+function fixture_json(extra) {
+  return JSON.stringify({ schema_version: 2, user_id: 'offline-sync-user',
+    playlist_track_entries: [], liked_tracks: [], saved_albums: [], track_index_by_spotify_id: {}, ...extra });
+}
 function make_source_project() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'so-import-src-'));
   const dirs = ['backup/merged', 'backup/classification', 'imports'];
@@ -62,7 +67,7 @@ function make_source_project() {
   for (let j = 0; j < REQUIRED_CORE.length; j += 1) {
     const p = path.join(root, REQUIRED_CORE[j].split('/').join(path.sep));
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify({ id: REQUIRED_CORE[j], v: 1 }), 'utf8');
+    fs.writeFileSync(p, (REQUIRED_CORE[j] === 'backup/merged/library-v2.json' ? fixture_json({ v: 1 }) : JSON.stringify({ id: REQUIRED_CORE[j], v: 1 })), 'utf8');
   }
   fs.writeFileSync(path.join(root, 'imports/a.txt'), 'track', 'utf8');
   return root;
@@ -174,7 +179,7 @@ test('2. 正常接續匯入', async function () {
   });
   fs.writeFileSync(
     path.join(src, 'backup/merged/library-v2.json'),
-    JSON.stringify({ id: 'v2', v: 2 }),
+    fixture_json({ id: 'v2', v: 2 }),
     'utf8'
   );
   const zip2 = path.join(os.tmpdir(), 'so-imp-b-' + Date.now() + '.zip');
@@ -215,7 +220,7 @@ test('4. 匯入較舊 ZIP 拒絕', async function () {
   });
   fs.writeFileSync(
     path.join(src, 'backup/merged/library-v2.json'),
-    '{"v":9}',
+    fixture_json({ v: 9 }),
     'utf8'
   );
   await export_zip_from(src, zip_new);
@@ -245,12 +250,12 @@ test('5. 本機資料修改後衝突', async function () {
   });
   fs.writeFileSync(
     path.join(tgt, 'backup/merged/library-v2.json'),
-    '{"local_edit":true}',
+    fixture_json({ local_edit: true }),
     'utf8'
   );
   fs.writeFileSync(
     path.join(src, 'backup/merged/library-v2.json'),
-    JSON.stringify({ remote: 3 }),
+    fixture_json({ remote: 3 }),
     'utf8'
   );
   await export_zip_from(src, zip2);
@@ -270,7 +275,7 @@ test('5. 本機資料修改後衝突', async function () {
     authorized_local_modified_manifest_sha256: authorization,
   });
   assert.equal(no_confirm.ok, false);
-  assert.equal(fs.readFileSync(path.join(tgt, REQUIRED_CORE[0]), 'utf8'), '{"local_edit":true}');
+  assert.equal(fs.readFileSync(path.join(tgt, REQUIRED_CORE[0]), 'utf8'), fixture_json({ local_edit: true }));
   const prompts = [];
   const authorized = await run_import_gui_flow({
     import_common: {
@@ -291,9 +296,9 @@ test('5. 本機資料修改後衝突', async function () {
   assert.equal(authorized.applied, true);
   assert.equal(authorized.backup_verified, true);
   assert.equal(authorized.preview.handoff.authorized_local_modified.scenario, 'local_modified');
-  assert.equal(fs.readFileSync(path.join(authorized.backup_run_dir, REQUIRED_CORE[0]), 'utf8'), '{"local_edit":true}');
-  assert.equal(fs.readFileSync(path.join(tgt, REQUIRED_CORE[0]), 'utf8'), JSON.stringify({ remote: 3 }));
-  fs.writeFileSync(path.join(tgt, REQUIRED_CORE[0]), '{"local_edit":true}');
+  assert.equal(fs.readFileSync(path.join(authorized.backup_run_dir, REQUIRED_CORE[0]), 'utf8'), fixture_json({ local_edit: true }));
+  assert.equal(fs.readFileSync(path.join(tgt, REQUIRED_CORE[0]), 'utf8'), fixture_json({ remote: 3 }));
+  fs.writeFileSync(path.join(tgt, REQUIRED_CORE[0]), fixture_json({ local_edit: true }));
   const normal_again = await import_zip_to(tgt, zip2, { dry_run: true });
   assert.equal(normal_again.ok, false);
   assert.equal(normal_again.preview.handoff.scenario, 'local_modified');
@@ -416,7 +421,7 @@ test('13. Dry Run 不修改正式檔', async function () {
   });
   fs.writeFileSync(
     path.join(src, 'backup/merged/library-v2.json'),
-    JSON.stringify({ id: 'dry-v2', v: 2 }),
+    fixture_json({ id: 'dry-v2', v: 2 }),
     'utf8'
   );
   const zip2 = path.join(os.tmpdir(), 'so-imp-dry2-' + Date.now() + '.zip');
@@ -522,7 +527,7 @@ test('19. 雙電腦往返 家→公司→家→公司', async function () {
 
   fs.writeFileSync(
     path.join(company, 'backup/merged/library-v2.json'),
-    JSON.stringify({ site: 'company', v: 2 }),
+    fixture_json({ site: 'company', v: 2 }),
     'utf8'
   );
   const ex_b = await export_zip_from(company, zip_b);
@@ -540,7 +545,7 @@ test('19. 雙電腦往返 家→公司→家→公司', async function () {
 
   fs.writeFileSync(
     path.join(home, 'backup/merged/library-v2.json'),
-    JSON.stringify({ site: 'home', v: 3 }),
+    fixture_json({ site: 'home', v: 3 }),
     'utf8'
   );
   const ex_c = await export_zip_from(home, zip_c);
@@ -578,7 +583,7 @@ test('20. 多日匯出：略過 ZIP A，公司直接匯入最新 ZIP B', async f
   assert.ok(fs.existsSync(zip_a));
   fs.writeFileSync(
     path.join(home, 'backup/merged/library-v2.json'),
-    JSON.stringify({ day: 2, v: 2 }),
+    fixture_json({ day: 2, v: 2 }),
     'utf8'
   );
   await export_zip_from(home, zip_b);
@@ -595,7 +600,7 @@ test('20. 多日匯出：略過 ZIP A，公司直接匯入最新 ZIP B', async f
 
   fs.writeFileSync(
     path.join(company, 'backup/merged/library-v2.json'),
-    JSON.stringify({ site: 'company', v: 3 }),
+    fixture_json({ site: 'company', v: 3 }),
     'utf8'
   );
   await export_zip_from(company, zip_c);
@@ -620,14 +625,14 @@ test('21. 家裡匯出 B 後又修改資料，匯入 C 應拒絕', async functio
   });
   fs.writeFileSync(
     path.join(company, 'backup/merged/library-v2.json'),
-    JSON.stringify({ remote: 9 }),
+    fixture_json({ remote: 9 }),
     'utf8'
   );
   await export_zip_from(company, zip_c);
 
   fs.writeFileSync(
     path.join(home, 'backup/merged/library-v2.json'),
-    JSON.stringify({ local_edit: true }),
+    fixture_json({ local_edit: true }),
     'utf8'
   );
 

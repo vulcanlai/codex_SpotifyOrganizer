@@ -28,6 +28,7 @@ test('index 含合併工作區與清單切換', function () {
   assert.match(html, /id="batch_toolbar"/);
   assert.match(html, /id="ai_test_batch"/);
   assert.match(html, /id="preview_panel"/);
+  assert.match(html, /id="managed_playlists_panel"/);
   assert.doesNotMatch(html, /id="ai_track_list"/);
   assert.doesNotMatch(html, /id="ai_detail"/);
 });

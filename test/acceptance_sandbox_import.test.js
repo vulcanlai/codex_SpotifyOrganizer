@@ -46,7 +46,7 @@ function make_source_project() {
   for (let j = 0; j < REQUIRED_CORE.length; j += 1) {
     const p = path.join(root, REQUIRED_CORE[j].split('/').join(path.sep));
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, JSON.stringify({ id: REQUIRED_CORE[j], v: 1 }), 'utf8');
+    fs.writeFileSync(p, JSON.stringify(REQUIRED_CORE[j] === 'backup/merged/library-v2.json' ? { schema_version: 2, user_id: 'offline-sync-user', playlist_track_entries: [], liked_tracks: [], saved_albums: [], track_index_by_spotify_id: {}, v: 1 } : { id: REQUIRED_CORE[j], v: 1 }), 'utf8');
   }
   fs.mkdirSync(path.join(root, 'imports'), { recursive: true });
   fs.writeFileSync(path.join(root, 'imports/a.txt'), 'track', 'utf8');

@@ -42,6 +42,20 @@
         </div>
         <div id="preview_result" class="preview_result muted">選擇篩選條件後按「依目前篩選預覽」。</div>
       </div>
+
+      <div class="preview_panel" id="managed_playlists_panel">
+        <h3 class="subsection_title">🎵 人工歌單讀回</h3>
+        <p class="section_notice">此處只顯示 CLI 已產生的唯讀 plan。讀回請用 <code>npm run playlists:preview</code>；確認與 CLI 使用同一旗標，不能略過本機安全檢查。介面不會連線改 Spotify。</p>
+        <div id="managed_plan_summary" class="preview_result muted">尚未載入預覽。</div>
+        <div class="preview_mode_row">
+          <button type="button" id="btn_managed_plan_reload" class="btn btn_secondary">載入最新預覽</button>
+          <label class="field_label" for="managed_plan_hash">plan hash</label>
+          <input id="managed_plan_hash" class="field_select" type="text" autocomplete="off">
+          <label class="field_label" for="managed_plan_confirm">確認旗標</label>
+          <input id="managed_plan_confirm" class="field_select" type="text" autocomplete="off" placeholder="I_UNDERSTAND_MANAGED_PLAYLIST_APPLY">
+          <button type="button" id="btn_managed_plan_apply" class="btn btn_secondary">確認保存本機調整</button>
+        </div>
+      </div>
     </section>
 
     <section class="workspace" id="workspace" aria-label="主要工作區">
